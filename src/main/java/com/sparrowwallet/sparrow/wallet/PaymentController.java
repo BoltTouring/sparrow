@@ -540,20 +540,30 @@ public class PaymentController extends WalletFormController implements Initializ
         nip05PaymentProperty.set(nip05Payment);
         address.setText(nip05Payment.hrn());
         revalidate(address, addressListener);
-        address.leftProperty().set(getNostrGlyph());
+        address.leftProperty().set(getNostrGlyph(nip05Payment.signatureVerified()));
         if(label.getText().isEmpty()) {
-            label.setText(nip05Payment.toString());
+            label.setText("₿ Silent Payment to " + nip05Payment.hrn());
         }
         label.requestFocus();
     }
 
-    private Node getNostrGlyph() {
+    private Node getNostrGlyph(boolean verified) {
         Label nostrLabel = new Label("N");
         nostrLabel.setStyle("-fx-text-fill: #8B5CF6; -fx-font-weight: bold; -fx-font-size: 12px;");
         HBox hBox = new HBox();
         hBox.setAlignment(Pos.CENTER);
         hBox.setPadding(new Insets(0, 4, 0, 2));
         hBox.getChildren().add(nostrLabel);
+        if(verified) {
+            Label checkLabel = new Label("\u2713");
+            checkLabel.setStyle("-fx-text-fill: #22C55E; -fx-font-weight: bold; -fx-font-size: 10px;");
+            hBox.getChildren().add(checkLabel);
+            Tooltip tooltip = new Tooltip("Verified via Nostr (NIP-05)\nSchnorr signature verified");
+            Tooltip.install(hBox, tooltip);
+        } else {
+            Tooltip tooltip = new Tooltip("Resolved via Nostr (NIP-05)\nSignature not verified");
+            Tooltip.install(hBox, tooltip);
+        }
         return hBox;
     }
 
