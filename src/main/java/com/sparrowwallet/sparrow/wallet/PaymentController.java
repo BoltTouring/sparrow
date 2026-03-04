@@ -28,6 +28,9 @@ import com.sparrowwallet.sparrow.io.Storage;
 import com.sparrowwallet.sparrow.net.ExchangeSource;
 import com.sparrowwallet.drongo.dns.DnsPayment;
 import com.sparrowwallet.drongo.dns.DnsPaymentResolver;
+import com.sparrowwallet.drongo.nip05.Nip05Payment;
+import com.sparrowwallet.drongo.nip05.Nip05PaymentCache;
+import com.sparrowwallet.drongo.nip05.Nip05Resolver;
 import com.sparrowwallet.sparrow.paynym.PayNym;
 import com.sparrowwallet.sparrow.paynym.PayNymDialog;
 import javafx.application.Platform;
@@ -151,6 +154,8 @@ public class PaymentController extends WalletFormController implements Initializ
 
     private final ObjectProperty<DnsPayment> dnsPaymentProperty = new SimpleObjectProperty<>();
 
+    private final ObjectProperty<Nip05Payment> nip05PaymentProperty = new SimpleObjectProperty<>();
+
     private static final Wallet payNymWallet = new Wallet() {
         @Override
         public String getFullDisplayName() {
@@ -184,6 +189,10 @@ public class PaymentController extends WalletFormController implements Initializ
 
             if(silentPaymentAddressProperty.get() != null && !newValue.equals(silentPaymentAddressProperty.get().getAddress())) {
                 silentPaymentAddressProperty.set(null);
+            }
+
+            if(nip05PaymentProperty.get() != null && !newValue.equals(nip05PaymentProperty.get().hrn())) {
+                nip05PaymentProperty.set(null);
             }
 
             try {
@@ -222,10 +231,19 @@ public class PaymentController extends WalletFormController implements Initializ
                 }
 
                 DnsPaymentService dnsPaymentService = new DnsPaymentService(dnsPaymentHrn);
-                dnsPaymentService.setOnSucceeded(_ -> dnsPaymentService.getValue().ifPresent(dnsPayment -> setDnsPayment(dnsPayment)));
+                dnsPaymentService.setOnSucceeded(_ -> {
+                    Optional<DnsPayment> result = dnsPaymentService.getValue();
+                    if(result.isPresent()) {
+                        setDnsPayment(result.get());
+                    } else {
+                        // BIP 353 returned empty — fall back to NIP-05 resolution
+                        tryNip05Resolution(dnsPaymentHrn);
+                    }
+                });
                 dnsPaymentService.setOnFailed(failEvent -> {
                     if(failEvent.getSource().getException() != null && !(failEvent.getSource().getException().getCause() instanceof TimeoutException)) {
-                        AppServices.showErrorDialog("Validation failed for " + dnsPaymentHrn, Throwables.getRootCause(failEvent.getSource().getException()).getMessage());
+                        // DNS failed — also try NIP-05 as fallback
+                        tryNip05Resolution(dnsPaymentHrn);
                     }
                 });
                 dnsPaymentService.start();
@@ -373,6 +391,24 @@ public class PaymentController extends WalletFormController implements Initializ
             sendController.updateTransaction();
         });
 
+        nip05PaymentProperty.addListener((observable, oldValue, nip05Payment) -> {
+            if(nip05Payment != null) {
+                MenuItem copySPMenuItem = new MenuItem("Copy SP Address");
+                copySPMenuItem.setOnAction(e -> {
+                    ClipboardContent content = new ClipboardContent();
+                    content.putString(nip05Payment.spAddress().getAddress());
+                    Clipboard.getSystemClipboard().setContent(content);
+                });
+                address.setContextMenu(address.getCustomContextMenu(List.of(copySPMenuItem)));
+            } else {
+                address.setContextMenu(address.getCustomContextMenu(Collections.emptyList()));
+            }
+
+            revalidateAmount();
+            maxButton.setDisable(!isMaxButtonEnabled());
+            sendController.updateTransaction();
+        });
+
         address.setTextFormatter(new TextFormatter<>(change -> {
             String controlNewText = change.getControlNewText();
             if(!controlNewText.equals(controlNewText.trim())) {
@@ -474,6 +510,51 @@ public class PaymentController extends WalletFormController implements Initializ
 
         silentPaymentAddressProperty.set(silentPaymentAddress);
         label.requestFocus();
+    }
+
+    private void tryNip05Resolution(String hrn) {
+        // Check NIP-05 cache first
+        Nip05Payment cached = Nip05PaymentCache.getNip05Payment(hrn);
+        if(cached != null) {
+            Platform.runLater(() -> setNip05Payment(cached));
+            return;
+        }
+
+        Nip05PaymentService nip05Service = new Nip05PaymentService(hrn);
+        nip05Service.setOnSucceeded(_ -> nip05Service.getValue().ifPresent(payment -> setNip05Payment(payment)));
+        nip05Service.setOnFailed(failEvent -> {
+            if(failEvent.getSource().getException() != null) {
+                log.debug("NIP-05 resolution failed for " + hrn + ": " + failEvent.getSource().getException().getMessage());
+            }
+        });
+        nip05Service.start();
+    }
+
+    public void setNip05Payment(Nip05Payment nip05Payment) {
+        if(!nip05Payment.hasSilentPaymentAddress()) {
+            AppServices.showWarningDialog("No Silent Payment Address", "The Nostr profile for " + nip05Payment.hrn() + " does not contain a Silent Payment address.");
+            return;
+        }
+
+        setSilentPaymentAddress(nip05Payment.spAddress());
+        nip05PaymentProperty.set(nip05Payment);
+        address.setText(nip05Payment.hrn());
+        revalidate(address, addressListener);
+        address.leftProperty().set(getNostrGlyph());
+        if(label.getText().isEmpty()) {
+            label.setText(nip05Payment.toString());
+        }
+        label.requestFocus();
+    }
+
+    private Node getNostrGlyph() {
+        Label nostrLabel = new Label("N");
+        nostrLabel.setStyle("-fx-text-fill: #8B5CF6; -fx-font-weight: bold; -fx-font-size: 12px;");
+        HBox hBox = new HBox();
+        hBox.setAlignment(Pos.CENTER);
+        hBox.setPadding(new Insets(0, 4, 0, 2));
+        hBox.getChildren().add(nostrLabel);
+        return hBox;
     }
 
     private void updateOpenWallets() {
@@ -704,6 +785,8 @@ public class PaymentController extends WalletFormController implements Initializ
                 DnsPayment dnsPayment = DnsPaymentCache.getDnsPayment(payment);
                 if(dnsPayment != null) {
                     address.setText(dnsPayment.hrn());
+                } else if(payment instanceof SilentPayment && nip05PaymentProperty.get() != null) {
+                    address.setText(nip05PaymentProperty.get().hrn());
                 } else if(payment instanceof SilentPayment silentPayment) {
                     address.setText(silentPayment.getSilentPaymentAddress().getAddress());
                 } else {
@@ -743,6 +826,7 @@ public class PaymentController extends WalletFormController implements Initializ
         payNymProperty.set(null);
         dnsPaymentProperty.set(null);
         silentPaymentAddressProperty.set(null);
+        nip05PaymentProperty.set(null);
     }
 
     public void setMaxInput(ActionEvent event) {
@@ -942,6 +1026,25 @@ public class PaymentController extends WalletFormController implements Initializ
                 @Override
                 protected Optional<DnsPayment> call() throws Exception {
                     DnsPaymentResolver resolver = new DnsPaymentResolver(hrn);
+                    return resolver.resolve();
+                }
+            };
+        }
+    }
+
+    private static class Nip05PaymentService extends Service<Optional<Nip05Payment>> {
+        private final String hrn;
+
+        public Nip05PaymentService(String hrn) {
+            this.hrn = hrn;
+        }
+
+        @Override
+        protected Task<Optional<Nip05Payment>> createTask() {
+            return new Task<>() {
+                @Override
+                protected Optional<Nip05Payment> call() throws Exception {
+                    Nip05Resolver resolver = new Nip05Resolver(hrn);
                     return resolver.resolve();
                 }
             };
