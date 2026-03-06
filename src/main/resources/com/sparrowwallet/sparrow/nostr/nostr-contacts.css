@@ -1,0 +1,55 @@
+.nostr-contacts-pane {
+    -fx-padding: 0;
+}
+
+.title-area {
+    -fx-background-color: -fx-control-inner-background;
+    -fx-padding: 10 25 10 25;
+    -fx-border-width: 0px 0px 1px 0px;
+    -fx-border-color: #e5e5e6;
+}
+
+.title-label {
+    -fx-font-size: 24px;
+}
+
+.nostr-logo {
+    -fx-text-fill: #8B5CF6;
+    -fx-font-weight: bold;
+    -fx-font-size: 28px;
+}
+
+.status-label {
+    -fx-text-fill: #666666;
+    -fx-font-size: 12px;
+}
+
+.listview-label {
+    -fx-font-weight: normal;
+    -fx-font-size: 1.1em;
+    -fx-padding: 5 0 5 0;
+}
+
+.nostr-contact-cell {
+    -fx-padding: 5 10 5 10;
+}
+
+.nostr-contact-cell .contact-name {
+    -fx-font-weight: bold;
+    -fx-font-size: 13px;
+}
+
+.nostr-contact-cell .contact-nip05 {
+    -fx-text-fill: #888888;
+    -fx-font-size: 11px;
+}
+
+.nostr-contact-cell .sp-badge {
+    -fx-text-fill: #22C55E;
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+}
+
+.nostr-contact-cell .no-sp {
+    -fx-opacity: 0.5;
+}

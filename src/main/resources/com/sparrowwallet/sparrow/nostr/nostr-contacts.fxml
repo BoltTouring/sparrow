@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import java.lang.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+<?import com.sparrowwallet.sparrow.control.CopyableTextField?>
+
+<StackPane prefHeight="500.0" prefWidth="650.0" stylesheets="@nostr-contacts.css, @../general.css" styleClass="nostr-contacts-pane" fx:controller="com.sparrowwallet.sparrow.nostr.NostrContactsController" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml">
+    <VBox spacing="10">
+        <HBox styleClass="title-area">
+            <HBox alignment="CENTER_LEFT">
+                <Label text="Nostr Contacts" styleClass="title-label" />
+            </HBox>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Label text="N" styleClass="nostr-logo" />
+        </HBox>
+        <VBox spacing="10">
+            <padding>
+                <Insets top="15" left="25" right="25" />
+            </padding>
+            <HBox styleClass="field-box" spacing="10" alignment="CENTER_LEFT">
+                <Label text="Nostr ID:" styleClass="field-label" />
+                <CopyableTextField fx:id="npubInput" promptText="npub1... or user@domain" styleClass="field-control" HBox.hgrow="ALWAYS" />
+                <Button fx:id="resolveButton" text="Resolve" onAction="#resolveContacts" />
+                <ProgressIndicator fx:id="resolveProgress" visible="false" maxHeight="16" maxWidth="16" />
+            </HBox>
+            <Label fx:id="statusLabel" text="Enter an npub or NIP-05 address to load contacts" styleClass="status-label" />
+        </VBox>
+        <VBox spacing="5" VBox.vgrow="ALWAYS">
+            <padding>
+                <Insets left="25" right="25" bottom="10" />
+            </padding>
+            <HBox alignment="CENTER_LEFT">
+                <Label fx:id="contactCountLabel" text="" styleClass="listview-label" />
+            </HBox>
+            <ListView fx:id="contactsList" VBox.vgrow="ALWAYS" />
+        </VBox>
+    </VBox>
+</StackPane>

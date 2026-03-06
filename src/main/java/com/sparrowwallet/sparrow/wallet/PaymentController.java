@@ -31,6 +31,8 @@ import com.sparrowwallet.drongo.dns.DnsPaymentResolver;
 import com.sparrowwallet.drongo.nip05.Nip05Payment;
 import com.sparrowwallet.drongo.nip05.Nip05PaymentCache;
 import com.sparrowwallet.drongo.nip05.Nip05Resolver;
+import com.sparrowwallet.drongo.nip05.NostrContact;
+import com.sparrowwallet.sparrow.nostr.NostrContactsDialog;
 import com.sparrowwallet.sparrow.paynym.PayNym;
 import com.sparrowwallet.sparrow.paynym.PayNymDialog;
 import javafx.application.Platform;
@@ -160,6 +162,13 @@ public class PaymentController extends WalletFormController implements Initializ
         @Override
         public String getFullDisplayName() {
             return "PayNym or Payment code...";
+        }
+    };
+
+    private static final Wallet nostrContactsWallet = new Wallet() {
+        @Override
+        public String getFullDisplayName() {
+            return "Nostr Contacts...";
         }
     };
 
@@ -324,6 +333,22 @@ public class PaymentController extends WalletFormController implements Initializ
                 payNymDialog.initOwner(scanQrButton.getScene().getWindow());
                 Optional<PayNym> optPayNym = payNymDialog.showAndWait();
                 optPayNym.ifPresent(this::setPayNym);
+            } else if(newValue == nostrContactsWallet) {
+                NostrContactsDialog nostrDialog = new NostrContactsDialog();
+                nostrDialog.initOwner(scanQrButton.getScene().getWindow());
+                Optional<NostrContact> optContact = nostrDialog.showAndWait();
+                optContact.ifPresent(contact -> {
+                    if(contact.hasSilentPaymentAddress()) {
+                        setSilentPaymentAddress(contact.spAddress());
+                        address.setText(contact.getDisplayString());
+                        revalidate(address, addressListener);
+                        address.leftProperty().set(getNostrGlyph(contact.signatureVerified()));
+                        if(label.getText().isEmpty()) {
+                            label.setText("\u20BF Silent Payment to " + contact.displayName());
+                        }
+                        label.requestFocus();
+                    }
+                });
             } else if(newValue == nfcCardWallet) {
                 DeviceGetAddressDialog deviceGetAddressDialog = new DeviceGetAddressDialog(Collections.emptyList());
                 deviceGetAddressDialog.initOwner(scanQrButton.getScene().getWindow());
@@ -580,6 +605,8 @@ public class PaymentController extends WalletFormController implements Initializ
             openWalletList.add(payNymWallet);
         }
 
+        openWalletList.add(nostrContactsWallet);
+
         if(CardApi.isReaderAvailable()) {
             openWalletList.add(nfcCardWallet);
         }
@@ -590,6 +617,10 @@ public class PaymentController extends WalletFormController implements Initializ
     private Node getOpenWalletIcon(Wallet wallet) {
         if(wallet == payNymWallet) {
             return getPayNymGlyph();
+        }
+
+        if(wallet == nostrContactsWallet) {
+            return getNostrGlyph(true);
         }
 
         if(wallet == nfcCardWallet) {
