@@ -1060,15 +1060,11 @@ public class PaymentController extends WalletFormController implements Initializ
             NostrContact contact = event.getContact();
             if(contact.hasSilentPaymentAddress()) {
                 Platform.runLater(() -> {
-                    setSilentPaymentAddress(contact.spAddress());
-                    nip05PaymentProperty.set(null);
-                    address.setText(contact.getDisplayString());
-                    revalidate(address, addressListener);
-                    address.leftProperty().set(getNostrGlyph(contact.signatureVerified()));
-                    if(label.getText().isEmpty()) {
-                        label.setText("\u20BF Silent Payment to " + contact.displayName());
-                    }
-                    label.requestFocus();
+                    String hrn = contact.nip05() != null && !contact.nip05().isEmpty()
+                            ? contact.nip05() : contact.displayName();
+                    Nip05Payment nip05Payment = new Nip05Payment(hrn, contact.spAddress(),
+                            contact.pubkey(), contact.signatureVerified());
+                    setNip05Payment(nip05Payment);
                 });
             }
         }
