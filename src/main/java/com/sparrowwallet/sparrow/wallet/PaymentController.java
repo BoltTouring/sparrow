@@ -562,9 +562,17 @@ public class PaymentController extends WalletFormController implements Initializ
             return;
         }
 
-        setSilentPaymentAddress(nip05Payment.spAddress());
+        // Temporarily remove the address text listener to prevent it from
+        // clearing properties mid-setup (it reacts to setText and nullifies
+        // silentPaymentAddressProperty when the text doesn't match the sp address)
+        address.textProperty().removeListener(addressListener);
+
         nip05PaymentProperty.set(nip05Payment);
+        setSilentPaymentAddress(nip05Payment.spAddress());
         address.setText(nip05Payment.hrn());
+
+        // Re-add listener and trigger a single clean revalidation
+        address.textProperty().addListener(addressListener);
         revalidate(address, addressListener);
         address.leftProperty().set(getNostrGlyph(nip05Payment.signatureVerified()));
         if(label.getText().isEmpty()) {
@@ -583,16 +591,15 @@ public class PaymentController extends WalletFormController implements Initializ
             }
             if(url != null) {
                 SVGImage svgImage = SVGLoader.load(url);
-                svgImage.setScaleX(1.0);
-                svgImage.setScaleY(1.0);
-                HBox hBox = new HBox(2);
+                svgImage.setScaleX(0.8);
+                svgImage.setScaleY(0.8);
+                HBox hBox = new HBox(1);
                 hBox.setAlignment(Pos.CENTER);
-                hBox.setPadding(new Insets(0, 2, 0, 3));
-                hBox.setMaxHeight(16);
+                hBox.setPadding(new Insets(0, 2, 0, 2));
                 hBox.getChildren().add(svgImage);
                 if(verified) {
                     Label checkLabel = new Label("\u2713");
-                    checkLabel.setStyle("-fx-text-fill: #22C55E; -fx-font-weight: bold; -fx-font-size: 10px;");
+                    checkLabel.setStyle("-fx-text-fill: #22C55E; -fx-font-weight: bold; -fx-font-size: 9px;");
                     hBox.getChildren().add(checkLabel);
                     Tooltip.install(hBox, new Tooltip("Verified via Nostr (NIP-05)\nSchnorr signature verified"));
                 } else {
@@ -606,9 +613,11 @@ public class PaymentController extends WalletFormController implements Initializ
 
         // Fallback to text
         Label nostrLabel = new Label("N");
-        nostrLabel.setStyle("-fx-text-fill: #8B5CF6; -fx-font-weight: bold; -fx-font-size: 12px;");
+        nostrLabel.setStyle("-fx-text-fill: #8B5CF6; -fx-font-weight: bold; -fx-font-size: 11px;");
         HBox hBox = new HBox();
         hBox.setAlignment(Pos.CENTER);
+        hBox.setPadding(new Insets(0, 3, 0, 2));
+        hBox.getChildren().add(nostrLabel);
         hBox.setPadding(new Insets(0, 4, 0, 2));
         hBox.getChildren().add(nostrLabel);
         return hBox;
