@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import java.lang.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+<?import com.sparrowwallet.sparrow.control.CopyableTextField?>
+
+<BorderPane stylesheets="@contacts.css, @wallet.css, @../general.css" styleClass="wallet-pane" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" fx:controller="com.sparrowwallet.sparrow.wallet.ContactsController">
+    <center>
+    <VBox spacing="0">
+        <!-- Header -->
+        <HBox styleClass="contacts-header" alignment="CENTER_LEFT" spacing="10">
+            <padding>
+                <Insets top="15" left="25" right="25" bottom="10" />
+            </padding>
+            <Label text="Nostr Contacts" styleClass="contacts-title" />
+            <Region HBox.hgrow="ALWAYS"/>
+            <Label text="N" styleClass="nostr-logo" />
+        </HBox>
+
+        <!-- Identity input -->
+        <VBox spacing="8">
+            <padding>
+                <Insets top="10" left="25" right="25" bottom="5" />
+            </padding>
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Label text="Your Nostr ID:" styleClass="field-label" minWidth="90" />
+                <CopyableTextField fx:id="npubInput" promptText="npub1... or user@domain" HBox.hgrow="ALWAYS" />
+                <Button fx:id="resolveButton" text="Load Contacts" onAction="#resolveContacts" styleClass="contacts-resolve-btn" />
+                <Button fx:id="refreshButton" text="↻" onAction="#resolveContacts" visible="false" managed="false" styleClass="contacts-refresh-btn">
+                    <tooltip><Tooltip text="Refresh contacts from Nostr relays" /></tooltip>
+                </Button>
+                <ProgressIndicator fx:id="resolveProgress" visible="false" maxHeight="18" maxWidth="18" />
+            </HBox>
+            <Label fx:id="statusLabel" text="Enter your npub or NIP-05 address to load your follow list" styleClass="status-label" />
+        </VBox>
+
+        <Separator />
+
+        <!-- Search/filter bar -->
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <padding>
+                <Insets top="8" left="25" right="25" bottom="8" />
+            </padding>
+            <TextField fx:id="searchField" promptText="Filter contacts..." HBox.hgrow="ALWAYS" styleClass="contacts-search" />
+            <CheckBox fx:id="spOnlyCheckbox" text="Silent Payment only" styleClass="sp-filter-check" />
+            <Region HBox.hgrow="SOMETIMES" />
+            <Label fx:id="contactCountLabel" text="" styleClass="contact-count-label" />
+        </HBox>
+
+        <!-- Contacts list -->
+        <ListView fx:id="contactsList" VBox.vgrow="ALWAYS" styleClass="contacts-listview">
+            <padding>
+                <Insets left="10" right="10" />
+            </padding>
+        </ListView>
+
+        <!-- Bottom action bar -->
+        <HBox fx:id="actionBar" styleClass="contacts-action-bar" spacing="10" alignment="CENTER_RIGHT">
+            <padding>
+                <Insets top="10" left="25" right="25" bottom="15" />
+            </padding>
+            <Button fx:id="copySpButton" text="Copy SP Address" onAction="#copySpAddress" disable="true" />
+            <Button fx:id="payButton" text="Pay Contact" onAction="#paySelectedContact" disable="true" styleClass="contacts-pay-btn" />
+        </HBox>
+    </VBox>
+    </center>
+</BorderPane>

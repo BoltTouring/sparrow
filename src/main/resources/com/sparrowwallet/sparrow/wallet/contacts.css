@@ -1,0 +1,95 @@
+.contacts-header {
+    -fx-border-width: 0 0 1px 0;
+    -fx-border-color: derive(-fx-background, -10%);
+}
+
+.contacts-title {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+}
+
+.nostr-logo {
+    -fx-text-fill: #8B5CF6;
+    -fx-font-weight: bold;
+    -fx-font-size: 26px;
+}
+
+.status-label {
+    -fx-text-fill: #888888;
+    -fx-font-size: 11px;
+}
+
+.contact-count-label {
+    -fx-text-fill: #888888;
+    -fx-font-size: 12px;
+}
+
+.contacts-resolve-btn {
+    -fx-min-width: 120;
+}
+
+.contacts-refresh-btn {
+    -fx-min-width: 32;
+    -fx-padding: 4 8 4 8;
+    -fx-font-size: 14px;
+}
+
+.contacts-search {
+    -fx-min-height: 28;
+}
+
+.sp-filter-check {
+    -fx-font-size: 12px;
+}
+
+/* Contact cell styling */
+.contacts-listview .nostr-contact-cell {
+    -fx-padding: 8 12 8 12;
+}
+
+.contacts-listview .contact-name {
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+
+.contacts-listview .contact-nip05 {
+    -fx-text-fill: #888888;
+    -fx-font-size: 11px;
+}
+
+.contacts-listview .contact-sp-address {
+    -fx-font-family: monospace;
+    -fx-text-fill: #666666;
+    -fx-font-size: 11px;
+}
+
+.contacts-listview .sp-badge {
+    -fx-text-fill: #F97316;
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+
+.contacts-listview .verified-badge {
+    -fx-text-fill: #22C55E;
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+}
+
+.contacts-listview .no-sp-cell {
+    -fx-opacity: 0.45;
+}
+
+/* Action bar */
+.contacts-action-bar {
+    -fx-border-width: 1px 0 0 0;
+    -fx-border-color: derive(-fx-background, -10%);
+}
+
+.contacts-pay-btn {
+    -fx-min-width: 120;
+}
+
+/* Selected contact highlight */
+.contacts-listview .list-cell:selected .contact-name {
+    -fx-font-weight: bold;
+}
