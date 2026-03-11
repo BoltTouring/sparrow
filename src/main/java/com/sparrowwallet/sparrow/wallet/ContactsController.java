@@ -3,9 +3,11 @@ package com.sparrowwallet.sparrow.wallet;
 import com.sparrowwallet.drongo.nip05.NostrContact;
 import com.sparrowwallet.drongo.nip05.NostrContactCache;
 import com.sparrowwallet.drongo.nip05.NostrContactResolver;
+import com.sparrowwallet.drongo.nip05.NostrContactStore;
 import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.control.CopyableTextField;
 import com.sparrowwallet.sparrow.event.SendActionEvent;
+import com.sparrowwallet.sparrow.io.Storage;
 import javafx.animation.PauseTransition;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -143,20 +145,31 @@ public class ContactsController extends WalletFormController implements Initiali
         // Placeholder for empty list
         contactsList.setPlaceholder(new Label("No contacts loaded.\nEnter your npub or NIP-05 address above and click Load Contacts."));
 
-        // Auto-populate from cache if contacts were already resolved in another wallet tab
+        // Auto-populate: try in-memory cache first, then saved file on disk
         String lastInput = NostrContactCache.getLastInput();
         if(lastInput != null) {
             npubInput.setText(lastInput);
             List<NostrContact> cached = NostrContactCache.getContacts(lastInput);
             if(cached != null && !cached.isEmpty()) {
-                allContacts.setAll(cached);
-                updateCountLabel();
-                long spCount = cached.stream().filter(NostrContact::hasSilentPaymentAddress).count();
-                statusLabel.setText("Loaded " + cached.size() + " contacts (" + spCount + " with Silent Payment address)");
-                refreshButton.setVisible(true);
-                refreshButton.setManaged(true);
+                populateContacts(cached, "Loaded " + cached.size() + " contacts");
             }
+        } else {
+            // Try loading from disk
+            NostrContactStore.load(Storage.getSparrowDir()).ifPresent(saved -> {
+                npubInput.setText(saved.input());
+                NostrContactCache.putContacts(saved.input(), saved.contacts());
+                populateContacts(saved.contacts(), "Restored " + saved.contacts().size() + " saved contacts");
+            });
         }
+    }
+
+    private void populateContacts(List<NostrContact> contacts, String prefix) {
+        allContacts.setAll(contacts);
+        updateCountLabel();
+        long spCount = contacts.stream().filter(NostrContact::hasSilentPaymentAddress).count();
+        statusLabel.setText(prefix + " (" + spCount + " with Silent Payment address)");
+        refreshButton.setVisible(true);
+        refreshButton.setManaged(true);
     }
 
     private void updateFilter() {
@@ -245,6 +258,9 @@ public class ContactsController extends WalletFormController implements Initiali
 
             // Store in shared cache for other wallet tabs
             NostrContactCache.putContacts(resolveInput, contacts);
+
+            // Persist to disk for next session
+            NostrContactStore.save(Storage.getSparrowDir(), resolveInput, contacts);
 
             long spCount = contacts.stream().filter(NostrContact::hasSilentPaymentAddress).count();
             statusLabel.setText("Loaded " + contacts.size() + " contacts (" + spCount + " with Silent Payment address)");

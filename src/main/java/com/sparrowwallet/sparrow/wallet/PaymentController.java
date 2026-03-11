@@ -24,6 +24,7 @@ import com.sparrowwallet.sparrow.event.*;
 import com.sparrowwallet.sparrow.glyphfont.FontAwesome5;
 import com.sparrowwallet.sparrow.io.CardApi;
 import com.sparrowwallet.sparrow.io.Config;
+import com.sparrowwallet.sparrow.Theme;
 import com.sparrowwallet.sparrow.io.Storage;
 import com.sparrowwallet.sparrow.net.ExchangeSource;
 import com.sparrowwallet.drongo.dns.DnsPayment;
@@ -573,22 +574,40 @@ public class PaymentController extends WalletFormController implements Initializ
     }
 
     private Node getNostrGlyph(boolean verified) {
+        try {
+            URL url;
+            if(Config.get().getTheme() == Theme.DARK) {
+                url = AppServices.class.getResource("/image/nostr-icon-invert.svg");
+            } else {
+                url = AppServices.class.getResource("/image/nostr-icon.svg");
+            }
+            if(url != null) {
+                SVGImage svgImage = SVGLoader.load(url);
+                HBox hBox = new HBox(2);
+                hBox.setAlignment(Pos.CENTER);
+                hBox.setPadding(new Insets(0, 3, 0, 3));
+                hBox.getChildren().add(svgImage);
+                if(verified) {
+                    Label checkLabel = new Label("\u2713");
+                    checkLabel.setStyle("-fx-text-fill: #22C55E; -fx-font-weight: bold; -fx-font-size: 10px;");
+                    hBox.getChildren().add(checkLabel);
+                    Tooltip.install(hBox, new Tooltip("Verified via Nostr (NIP-05)\nSchnorr signature verified"));
+                } else {
+                    Tooltip.install(hBox, new Tooltip("Resolved via Nostr (NIP-05)\nSignature not verified"));
+                }
+                return hBox;
+            }
+        } catch(Exception e) {
+            log.error("Could not load nostr icon");
+        }
+
+        // Fallback to text
         Label nostrLabel = new Label("N");
         nostrLabel.setStyle("-fx-text-fill: #8B5CF6; -fx-font-weight: bold; -fx-font-size: 12px;");
         HBox hBox = new HBox();
         hBox.setAlignment(Pos.CENTER);
         hBox.setPadding(new Insets(0, 4, 0, 2));
         hBox.getChildren().add(nostrLabel);
-        if(verified) {
-            Label checkLabel = new Label("\u2713");
-            checkLabel.setStyle("-fx-text-fill: #22C55E; -fx-font-weight: bold; -fx-font-size: 10px;");
-            hBox.getChildren().add(checkLabel);
-            Tooltip tooltip = new Tooltip("Verified via Nostr (NIP-05)\nSchnorr signature verified");
-            Tooltip.install(hBox, tooltip);
-        } else {
-            Tooltip tooltip = new Tooltip("Resolved via Nostr (NIP-05)\nSignature not verified");
-            Tooltip.install(hBox, tooltip);
-        }
         return hBox;
     }
 
