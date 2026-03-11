@@ -17,7 +17,6 @@ import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
-import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
@@ -25,9 +24,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URL;
-import java.util.Collections;
-import java.util.List;
-import java.util.ResourceBundle;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Controller for the Nostr Contacts wallet tab.
@@ -75,6 +73,7 @@ public class ContactsController extends WalletFormController implements Initiali
 
     private final ObservableList<NostrContact> allContacts = FXCollections.observableArrayList();
     private FilteredList<NostrContact> filteredContacts;
+    private final Set<NostrContact> checkedContacts = new LinkedHashSet<>();
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -85,18 +84,11 @@ public class ContactsController extends WalletFormController implements Initiali
         // Set up filtered list
         filteredContacts = new FilteredList<>(allContacts, _ -> true);
         contactsList.setItems(filteredContacts);
-        contactsList.setCellFactory(_ -> new ContactsTabCell());
-
-        // Enable multi-select
-        contactsList.getSelectionModel().setSelectionMode(javafx.scene.control.SelectionMode.MULTIPLE);
+        contactsList.setCellFactory(_ -> new ContactsTabCell(checkedContacts, this::updateActionButtons));
 
         // Search filter
         searchField.textProperty().addListener((_, _, _) -> updateFilter());
         spOnlyCheckbox.selectedProperty().addListener((_, _, _) -> updateFilter());
-
-        // Selection listener — enable/disable action buttons and update labels
-        contactsList.getSelectionModel().getSelectedItems().addListener(
-                (javafx.collections.ListChangeListener<NostrContact>) _ -> updateActionButtons());
 
         // Double-click to pay single contact
         contactsList.setOnMouseClicked(event -> {
@@ -197,6 +189,8 @@ public class ContactsController extends WalletFormController implements Initiali
         resolveButton.setDisable(true);
         statusLabel.setText("Resolving contacts from Nostr relays...");
         allContacts.clear();
+        checkedContacts.clear();
+        updateActionButtons();
         searchField.clear();
         contactCountLabel.setText("");
 
@@ -239,9 +233,14 @@ public class ContactsController extends WalletFormController implements Initiali
 
     @FXML
     public void paySelectedContact() {
-        List<NostrContact> selected = contactsList.getSelectionModel().getSelectedItems().stream()
-                .filter(NostrContact::hasSilentPaymentAddress)
-                .toList();
+        List<NostrContact> selected = new ArrayList<>(checkedContacts);
+        if(selected.isEmpty()) {
+            // Fall back to single list selection
+            NostrContact single = contactsList.getSelectionModel().getSelectedItem();
+            if(single != null && single.hasSilentPaymentAddress()) {
+                selected = List.of(single);
+            }
+        }
         if(!selected.isEmpty()) {
             payContacts(selected);
         }
@@ -249,13 +248,17 @@ public class ContactsController extends WalletFormController implements Initiali
 
     @FXML
     public void copySpAddress() {
-        List<NostrContact> selected = contactsList.getSelectionModel().getSelectedItems().stream()
-                .filter(NostrContact::hasSilentPaymentAddress)
-                .toList();
+        List<NostrContact> selected = new ArrayList<>(checkedContacts);
+        if(selected.isEmpty()) {
+            NostrContact single = contactsList.getSelectionModel().getSelectedItem();
+            if(single != null && single.hasSilentPaymentAddress()) {
+                selected = List.of(single);
+            }
+        }
         if(!selected.isEmpty()) {
             String addresses = selected.stream()
                     .map(c -> c.spAddress().getAddress())
-                    .collect(java.util.stream.Collectors.joining("\n"));
+                    .collect(Collectors.joining("\n"));
             ClipboardContent content = new ClipboardContent();
             content.putString(addresses);
             Clipboard.getSystemClipboard().setContent(content);
@@ -264,10 +267,7 @@ public class ContactsController extends WalletFormController implements Initiali
     }
 
     private void updateActionButtons() {
-        List<NostrContact> selected = contactsList.getSelectionModel().getSelectedItems().stream()
-                .filter(c -> c != null && c.hasSilentPaymentAddress())
-                .toList();
-        int count = selected.size();
+        int count = checkedContacts.size();
         payButton.setDisable(count == 0);
         copySpButton.setDisable(count == 0);
         payButton.setText(count > 1 ? "Pay " + count + " Contacts" : "Pay Contact");
@@ -286,9 +286,17 @@ public class ContactsController extends WalletFormController implements Initiali
         pause.play();
     }
 
-    // ===== Custom ListCell for the Contacts tab =====
+    // ===== Custom ListCell with checkbox for the Contacts tab =====
 
     private static class ContactsTabCell extends ListCell<NostrContact> {
+        private final Set<NostrContact> checkedContacts;
+        private final Runnable onCheckChanged;
+
+        ContactsTabCell(Set<NostrContact> checkedContacts, Runnable onCheckChanged) {
+            this.checkedContacts = checkedContacts;
+            this.onCheckChanged = onCheckChanged;
+        }
+
         @Override
         protected void updateItem(NostrContact contact, boolean empty) {
             super.updateItem(contact, empty);
@@ -296,28 +304,50 @@ public class ContactsController extends WalletFormController implements Initiali
             if(empty || contact == null) {
                 setText(null);
                 setGraphic(null);
-                getStyleClass().removeAll("no-sp-cell");
+                setContextMenu(null);
             } else {
-                BorderPane pane = new BorderPane();
-                pane.setPadding(new Insets(6, 10, 6, 10));
-                pane.getStyleClass().add("nostr-contact-cell");
+                HBox row = new HBox(10);
+                row.setAlignment(Pos.CENTER_LEFT);
+                row.setPadding(new Insets(6, 10, 6, 4));
+                row.getStyleClass().add("nostr-contact-cell");
 
-                // Left: name, NIP-05, SP address
-                VBox leftBox = new VBox(2);
-                leftBox.setAlignment(Pos.CENTER_LEFT);
+                // Checkbox (only for SP contacts)
+                if(contact.hasSilentPaymentAddress()) {
+                    CheckBox checkBox = new CheckBox();
+                    checkBox.setSelected(checkedContacts.contains(contact));
+                    checkBox.selectedProperty().addListener((_, _, selected) -> {
+                        if(selected) {
+                            checkedContacts.add(contact);
+                        } else {
+                            checkedContacts.remove(contact);
+                        }
+                        onCheckChanged.run();
+                    });
+                    row.getChildren().add(checkBox);
+                } else {
+                    // Spacer matching checkbox width
+                    Label spacer = new Label();
+                    spacer.setMinWidth(18);
+                    row.getChildren().add(spacer);
+                }
+
+                // Name, NIP-05, SP address
+                VBox infoBox = new VBox(2);
+                infoBox.setAlignment(Pos.CENTER_LEFT);
+                HBox.setHgrow(infoBox, javafx.scene.layout.Priority.ALWAYS);
 
                 Label nameLabel = new Label(contact.displayName());
                 nameLabel.getStyleClass().add("contact-name");
-                leftBox.getChildren().add(nameLabel);
+                infoBox.getChildren().add(nameLabel);
 
                 if(contact.nip05() != null && !contact.nip05().isEmpty()) {
                     Label nip05Label = new Label(contact.nip05());
                     nip05Label.getStyleClass().add("contact-nip05");
-                    leftBox.getChildren().add(nip05Label);
+                    infoBox.getChildren().add(nip05Label);
                 } else {
                     Label pubkeyLabel = new Label(contact.getShortPubkey());
                     pubkeyLabel.getStyleClass().add("contact-nip05");
-                    leftBox.getChildren().add(pubkeyLabel);
+                    infoBox.getChildren().add(pubkeyLabel);
                 }
 
                 if(contact.hasSilentPaymentAddress()) {
@@ -325,34 +355,29 @@ public class ContactsController extends WalletFormController implements Initiali
                     String truncated = spAddr.substring(0, Math.min(16, spAddr.length())) + "..." + spAddr.substring(Math.max(0, spAddr.length() - 6));
                     Label spLabel = new Label(truncated);
                     spLabel.getStyleClass().add("contact-sp-address");
-                    leftBox.getChildren().add(spLabel);
+                    infoBox.getChildren().add(spLabel);
                 }
 
-                pane.setLeft(leftBox);
+                row.getChildren().add(infoBox);
 
-                // Right: badges
-                HBox rightBox = new HBox(6);
-                rightBox.setAlignment(Pos.CENTER_RIGHT);
-
+                // Badges
                 if(contact.hasSilentPaymentAddress()) {
                     Label spBadge = new Label("\u20BF");
                     spBadge.getStyleClass().add("sp-badge");
                     spBadge.setTooltip(new Tooltip("Silent Payment: " + contact.spAddress().getAddress()));
-                    rightBox.getChildren().add(spBadge);
+                    row.getChildren().add(spBadge);
 
                     if(contact.signatureVerified()) {
                         Label verifiedBadge = new Label("\u2713");
                         verifiedBadge.getStyleClass().add("verified-badge");
                         verifiedBadge.setTooltip(new Tooltip("Nostr event signature verified"));
-                        rightBox.getChildren().add(verifiedBadge);
+                        row.getChildren().add(verifiedBadge);
                     }
                 }
 
-                pane.setRight(rightBox);
-
                 // Dim contacts without SP
                 if(!contact.hasSilentPaymentAddress()) {
-                    pane.getStyleClass().add("no-sp-cell");
+                    row.setOpacity(0.45);
                 }
 
                 // Right-click context menu
@@ -387,9 +412,8 @@ public class ContactsController extends WalletFormController implements Initiali
                 }
 
                 setContextMenu(contextMenu);
-
                 setText(null);
-                setGraphic(pane);
+                setGraphic(row);
             }
         }
     }
