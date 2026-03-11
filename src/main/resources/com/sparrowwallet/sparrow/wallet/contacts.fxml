@@ -6,9 +6,7 @@
 <?import javafx.geometry.Insets?>
 <?import com.sparrowwallet.sparrow.control.CopyableTextField?>
 
-<BorderPane stylesheets="@contacts.css, @wallet.css, @../general.css" styleClass="wallet-pane" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" fx:controller="com.sparrowwallet.sparrow.wallet.ContactsController">
-    <center>
-    <VBox spacing="0">
+<VBox spacing="0" style="-fx-background-color: -fx-base;" stylesheets="@contacts.css, @wallet.css, @../general.css" styleClass="wallet-pane" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" fx:controller="com.sparrowwallet.sparrow.wallet.ContactsController">
         <!-- Header -->
         <HBox styleClass="contacts-header" alignment="CENTER_LEFT" spacing="10">
             <padding>
@@ -64,6 +62,4 @@
             <Button fx:id="copySpButton" text="Copy SP Address" onAction="#copySpAddress" disable="true" />
             <Button fx:id="payButton" text="Pay Contact" onAction="#paySelectedContact" disable="true" styleClass="contacts-pay-btn" />
         </HBox>
-    </VBox>
-    </center>
-</BorderPane>
+</VBox>
