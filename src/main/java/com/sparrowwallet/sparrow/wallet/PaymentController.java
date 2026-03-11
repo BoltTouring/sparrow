@@ -344,7 +344,7 @@ public class PaymentController extends WalletFormController implements Initializ
                         revalidate(address, addressListener);
                         address.leftProperty().set(getNostrGlyph(contact.signatureVerified()));
                         if(label.getText().isEmpty()) {
-                            label.setText("\u20BF Silent Payment to " + contact.displayName());
+                            label.setText("Silent Payment to " + contact.displayName());
                         }
                         label.requestFocus();
                     }
@@ -567,7 +567,7 @@ public class PaymentController extends WalletFormController implements Initializ
         revalidate(address, addressListener);
         address.leftProperty().set(getNostrGlyph(nip05Payment.signatureVerified()));
         if(label.getText().isEmpty()) {
-            label.setText("₿ Silent Payment to " + nip05Payment.hrn());
+            label.setText("Silent Payment to " + nip05Payment.hrn());
         }
         label.requestFocus();
     }

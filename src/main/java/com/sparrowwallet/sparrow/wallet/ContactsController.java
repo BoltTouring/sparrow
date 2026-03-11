@@ -74,6 +74,7 @@ public class ContactsController extends WalletFormController implements Initiali
     private final ObservableList<NostrContact> allContacts = FXCollections.observableArrayList();
     private FilteredList<NostrContact> filteredContacts;
     private final Set<NostrContact> checkedContacts = new LinkedHashSet<>();
+    private int lastClickedIndex = -1;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -84,20 +85,56 @@ public class ContactsController extends WalletFormController implements Initiali
         // Set up filtered list
         filteredContacts = new FilteredList<>(allContacts, _ -> true);
         contactsList.setItems(filteredContacts);
-        contactsList.setCellFactory(_ -> new ContactsTabCell(checkedContacts, this::updateActionButtons));
+        contactsList.setCellFactory(_ -> new ContactsTabCell(checkedContacts));
 
         // Search filter
         searchField.textProperty().addListener((_, _, _) -> updateFilter());
         spOnlyCheckbox.selectedProperty().addListener((_, _, _) -> updateFilter());
 
-        // Double-click to pay single contact
+        // Click handler: plain click toggles, shift-click selects range
         contactsList.setOnMouseClicked(event -> {
             if(event.getClickCount() == 2) {
                 NostrContact selected = contactsList.getSelectionModel().getSelectedItem();
                 if(selected != null && selected.hasSilentPaymentAddress()) {
                     payContacts(List.of(selected));
                 }
+                return;
             }
+
+            int clickedIndex = contactsList.getSelectionModel().getSelectedIndex();
+            if(clickedIndex < 0) return;
+            NostrContact clicked = filteredContacts.get(clickedIndex);
+            if(!clicked.hasSilentPaymentAddress()) return;
+
+            if(event.isShiftDown() && lastClickedIndex >= 0) {
+                // Shift-click: select range
+                int start = Math.min(lastClickedIndex, clickedIndex);
+                int end = Math.max(lastClickedIndex, clickedIndex);
+                for(int i = start; i <= end; i++) {
+                    NostrContact c = filteredContacts.get(i);
+                    if(c.hasSilentPaymentAddress()) {
+                        checkedContacts.add(c);
+                    }
+                }
+            } else if(event.isMetaDown()) {
+                // Cmd-click: toggle single without clearing
+                if(checkedContacts.contains(clicked)) {
+                    checkedContacts.remove(clicked);
+                } else {
+                    checkedContacts.add(clicked);
+                }
+            } else {
+                // Plain click: toggle single, clear others
+                boolean wasChecked = checkedContacts.contains(clicked);
+                checkedContacts.clear();
+                if(!wasChecked) {
+                    checkedContacts.add(clicked);
+                }
+            }
+
+            lastClickedIndex = clickedIndex;
+            contactsList.refresh();
+            updateActionButtons();
         });
 
         // Enter key to resolve
@@ -190,6 +227,7 @@ public class ContactsController extends WalletFormController implements Initiali
         statusLabel.setText("Resolving contacts from Nostr relays...");
         allContacts.clear();
         checkedContacts.clear();
+        lastClickedIndex = -1;
         updateActionButtons();
         searchField.clear();
         contactCountLabel.setText("");
@@ -286,15 +324,13 @@ public class ContactsController extends WalletFormController implements Initiali
         pause.play();
     }
 
-    // ===== Custom ListCell with checkbox for the Contacts tab =====
+    // ===== Custom ListCell with selection highlight =====
 
     private static class ContactsTabCell extends ListCell<NostrContact> {
         private final Set<NostrContact> checkedContacts;
-        private final Runnable onCheckChanged;
 
-        ContactsTabCell(Set<NostrContact> checkedContacts, Runnable onCheckChanged) {
+        ContactsTabCell(Set<NostrContact> checkedContacts) {
             this.checkedContacts = checkedContacts;
-            this.onCheckChanged = onCheckChanged;
         }
 
         @Override
@@ -305,29 +341,22 @@ public class ContactsController extends WalletFormController implements Initiali
                 setText(null);
                 setGraphic(null);
                 setContextMenu(null);
+                setStyle("");
             } else {
                 HBox row = new HBox(10);
                 row.setAlignment(Pos.CENTER_LEFT);
-                row.setPadding(new Insets(6, 10, 6, 4));
+                row.setPadding(new Insets(6, 10, 6, 10));
                 row.getStyleClass().add("nostr-contact-cell");
 
-                // Checkbox (only for SP contacts)
-                if(contact.hasSilentPaymentAddress()) {
-                    CheckBox checkBox = new CheckBox();
-                    checkBox.setSelected(checkedContacts.contains(contact));
-                    checkBox.selectedProperty().addListener((_, _, selected) -> {
-                        if(selected) {
-                            checkedContacts.add(contact);
-                        } else {
-                            checkedContacts.remove(contact);
-                        }
-                        onCheckChanged.run();
-                    });
-                    row.getChildren().add(checkBox);
+                // Selection indicator
+                if(checkedContacts.contains(contact)) {
+                    Label check = new Label("\u2713");
+                    check.setStyle("-fx-text-fill: #8B5CF6; -fx-font-weight: bold; -fx-font-size: 14px; -fx-min-width: 16;");
+                    row.getChildren().add(check);
+                    row.setStyle("-fx-background-color: derive(#8B5CF6, 90%); -fx-background-radius: 6;");
                 } else {
-                    // Spacer matching checkbox width
                     Label spacer = new Label();
-                    spacer.setMinWidth(18);
+                    spacer.setMinWidth(16);
                     row.getChildren().add(spacer);
                 }
 

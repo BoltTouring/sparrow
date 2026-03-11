@@ -1667,15 +1667,20 @@ public class SendController extends WalletFormController implements Initializabl
             PaymentController firstController = (PaymentController) paymentTabs.getTabs().get(0).getUserData();
             firstController.setNip05Payment(contactToPayment(contacts.get(0)));
 
-            // Add tabs for remaining contacts
+            // Add tabs for remaining contacts — defer setNip05Payment so FXML controls are ready
             for(int i = 1; i < contacts.size(); i++) {
                 Tab tab = getPaymentTab();
                 paymentTabs.getTabs().add(tab);
-                PaymentController controller = (PaymentController) tab.getUserData();
-                controller.setNip05Payment(contactToPayment(contacts.get(i)));
+                final int index = i;
+                Platform.runLater(() -> {
+                    PaymentController controller = (PaymentController) tab.getUserData();
+                    controller.setNip05Payment(contactToPayment(contacts.get(index)));
+                });
             }
 
             paymentTabs.getSelectionModel().select(0);
+        });
+    }
         });
     }
 
