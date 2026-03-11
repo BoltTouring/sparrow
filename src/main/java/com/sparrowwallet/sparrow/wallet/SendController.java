@@ -1681,8 +1681,6 @@ public class SendController extends WalletFormController implements Initializabl
             paymentTabs.getSelectionModel().select(0);
         });
     }
-        });
-    }
 
     private Nip05Payment contactToPayment(NostrContact contact) {
         String hrn = contact.nip05() != null && !contact.nip05().isEmpty()
