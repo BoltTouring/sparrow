@@ -87,23 +87,23 @@ public class ContactsController extends WalletFormController implements Initiali
         contactsList.setItems(filteredContacts);
         contactsList.setCellFactory(_ -> new ContactsTabCell());
 
+        // Enable multi-select
+        contactsList.getSelectionModel().setSelectionMode(javafx.scene.control.SelectionMode.MULTIPLE);
+
         // Search filter
         searchField.textProperty().addListener((_, _, _) -> updateFilter());
         spOnlyCheckbox.selectedProperty().addListener((_, _, _) -> updateFilter());
 
-        // Selection listener — enable/disable action buttons
-        contactsList.getSelectionModel().selectedItemProperty().addListener((_, _, contact) -> {
-            boolean hasSp = contact != null && contact.hasSilentPaymentAddress();
-            payButton.setDisable(!hasSp);
-            copySpButton.setDisable(!hasSp);
-        });
+        // Selection listener — enable/disable action buttons and update labels
+        contactsList.getSelectionModel().getSelectedItems().addListener(
+                (javafx.collections.ListChangeListener<NostrContact>) _ -> updateActionButtons());
 
-        // Double-click to pay
+        // Double-click to pay single contact
         contactsList.setOnMouseClicked(event -> {
             if(event.getClickCount() == 2) {
                 NostrContact selected = contactsList.getSelectionModel().getSelectedItem();
                 if(selected != null && selected.hasSilentPaymentAddress()) {
-                    payContact(selected);
+                    payContacts(List.of(selected));
                 }
             }
         });
@@ -239,32 +239,49 @@ public class ContactsController extends WalletFormController implements Initiali
 
     @FXML
     public void paySelectedContact() {
-        NostrContact contact = contactsList.getSelectionModel().getSelectedItem();
-        if(contact != null && contact.hasSilentPaymentAddress()) {
-            payContact(contact);
+        List<NostrContact> selected = contactsList.getSelectionModel().getSelectedItems().stream()
+                .filter(NostrContact::hasSilentPaymentAddress)
+                .toList();
+        if(!selected.isEmpty()) {
+            payContacts(selected);
         }
     }
 
     @FXML
     public void copySpAddress() {
-        NostrContact contact = contactsList.getSelectionModel().getSelectedItem();
-        if(contact != null && contact.hasSilentPaymentAddress()) {
+        List<NostrContact> selected = contactsList.getSelectionModel().getSelectedItems().stream()
+                .filter(NostrContact::hasSilentPaymentAddress)
+                .toList();
+        if(!selected.isEmpty()) {
+            String addresses = selected.stream()
+                    .map(c -> c.spAddress().getAddress())
+                    .collect(java.util.stream.Collectors.joining("\n"));
             ClipboardContent content = new ClipboardContent();
-            content.putString(contact.spAddress().getAddress());
+            content.putString(addresses);
             Clipboard.getSystemClipboard().setContent(content);
-            statusLabel.setText("Copied SP address for " + contact.displayName());
+            statusLabel.setText("Copied " + selected.size() + " SP address" + (selected.size() > 1 ? "es" : ""));
         }
     }
 
-    private void payContact(NostrContact contact) {
-        // Switch to Send tab and pre-fill the SP address.
-        // PauseTransition ensures the Send tab's PaymentController is initialized
-        // before receiving the NostrContactPayEvent.
+    private void updateActionButtons() {
+        List<NostrContact> selected = contactsList.getSelectionModel().getSelectedItems().stream()
+                .filter(c -> c != null && c.hasSilentPaymentAddress())
+                .toList();
+        int count = selected.size();
+        payButton.setDisable(count == 0);
+        copySpButton.setDisable(count == 0);
+        payButton.setText(count > 1 ? "Pay " + count + " Contacts" : "Pay Contact");
+        copySpButton.setText(count > 1 ? "Copy " + count + " SP Addresses" : "Copy SP Address");
+    }
+
+    private void payContacts(List<NostrContact> contacts) {
+        // Switch to Send tab, then post event with all selected contacts.
+        // PauseTransition ensures the Send tab is initialized before receiving the event.
         EventManager.get().post(new SendActionEvent(getWalletForm().getWallet(), Collections.emptyList(), true));
 
         PauseTransition pause = new PauseTransition(Duration.millis(150));
         pause.setOnFinished(_ -> {
-            EventManager.get().post(new NostrContactPayEvent(getWalletForm().getWallet(), contact));
+            EventManager.get().post(new NostrContactPayEvent(getWalletForm().getWallet(), contacts));
         });
         pause.play();
     }

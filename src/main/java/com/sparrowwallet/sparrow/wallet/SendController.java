@@ -9,6 +9,8 @@ import com.sparrowwallet.drongo.address.Address;
 import com.sparrowwallet.drongo.bip47.PaymentCode;
 import com.sparrowwallet.drongo.bip47.SecretPoint;
 import com.sparrowwallet.drongo.crypto.ECKey;
+import com.sparrowwallet.drongo.nip05.Nip05Payment;
+import com.sparrowwallet.drongo.nip05.NostrContact;
 import com.sparrowwallet.drongo.protocol.*;
 import com.sparrowwallet.drongo.psbt.PSBT;
 import com.sparrowwallet.drongo.silentpayments.SilentPayment;
@@ -1640,6 +1642,47 @@ public class SendController extends WalletFormController implements Initializabl
     public void hideAmountsStatusChanged(HideAmountsStatusEvent event) {
         updateTransaction();
         fiatFeeAmount.refresh();
+    }
+
+    @Subscribe
+    public void nostrContactsPay(NostrContactPayEvent event) {
+        if(!event.getWallet().equals(getWalletForm().getWallet())) {
+            return;
+        }
+
+        List<NostrContact> contacts = event.getContacts().stream()
+                .filter(NostrContact::hasSilentPaymentAddress)
+                .toList();
+        if(contacts.isEmpty()) {
+            return;
+        }
+
+        Platform.runLater(() -> {
+            // Clear existing tabs down to one
+            while(paymentTabs.getTabs().size() > 1) {
+                paymentTabs.getTabs().remove(paymentTabs.getTabs().size() - 1);
+            }
+
+            // Set first contact on existing first tab
+            PaymentController firstController = (PaymentController) paymentTabs.getTabs().get(0).getUserData();
+            firstController.setNip05Payment(contactToPayment(contacts.get(0)));
+
+            // Add tabs for remaining contacts
+            for(int i = 1; i < contacts.size(); i++) {
+                Tab tab = getPaymentTab();
+                paymentTabs.getTabs().add(tab);
+                PaymentController controller = (PaymentController) tab.getUserData();
+                controller.setNip05Payment(contactToPayment(contacts.get(i)));
+            }
+
+            paymentTabs.getSelectionModel().select(0);
+        });
+    }
+
+    private Nip05Payment contactToPayment(NostrContact contact) {
+        String hrn = contact.nip05() != null && !contact.nip05().isEmpty()
+                ? contact.nip05() : contact.displayName();
+        return new Nip05Payment(hrn, contact.spAddress(), contact.pubkey(), contact.signatureVerified());
     }
 
     private class PrivacyAnalysisTooltip extends VBox {

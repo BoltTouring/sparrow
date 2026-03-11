@@ -1054,22 +1054,6 @@ public class PaymentController extends WalletFormController implements Initializ
         fiatAmount.refresh();
     }
 
-    @Subscribe
-    public void nostrContactPay(NostrContactPayEvent event) {
-        if(event.getWallet().equals(sendController.getWalletForm().getWallet())) {
-            NostrContact contact = event.getContact();
-            if(contact.hasSilentPaymentAddress()) {
-                Platform.runLater(() -> {
-                    String hrn = contact.nip05() != null && !contact.nip05().isEmpty()
-                            ? contact.nip05() : contact.displayName();
-                    Nip05Payment nip05Payment = new Nip05Payment(hrn, contact.spAddress(),
-                            contact.pubkey(), contact.signatureVerified());
-                    setNip05Payment(nip05Payment);
-                });
-            }
-        }
-    }
-
     private static class DnsPaymentService extends Service<Optional<DnsPayment>> {
         private final String hrn;
 
