@@ -583,9 +583,12 @@ public class PaymentController extends WalletFormController implements Initializ
             }
             if(url != null) {
                 SVGImage svgImage = SVGLoader.load(url);
+                svgImage.setScaleX(1.0);
+                svgImage.setScaleY(1.0);
                 HBox hBox = new HBox(2);
                 hBox.setAlignment(Pos.CENTER);
-                hBox.setPadding(new Insets(0, 3, 0, 3));
+                hBox.setPadding(new Insets(0, 2, 0, 3));
+                hBox.setMaxHeight(16);
                 hBox.getChildren().add(svgImage);
                 if(verified) {
                     Label checkLabel = new Label("\u2713");
