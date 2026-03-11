@@ -674,6 +674,13 @@ public class PaymentController extends WalletFormController implements Initializ
             return SilentPayment.getDummyAddress();
         }
 
+        // NIP-05 resolution: the text listener clears silentPaymentAddressProperty when the
+        // address field contains an HRN like "user@domain", but the nip05Payment still holds the SP address
+        Nip05Payment nip05Payment = nip05PaymentProperty.get();
+        if(nip05Payment != null && nip05Payment.hasSilentPaymentAddress()) {
+            return SilentPayment.getDummyAddress();
+        }
+
         DnsPayment dnsPayment = dnsPaymentProperty.get();
         if(dnsPayment != null && dnsPayment.hasAddress()) {
             return dnsPayment.bitcoinURI().getAddress();
@@ -798,6 +805,9 @@ public class PaymentController extends WalletFormController implements Initializ
             if(!label.getText().isEmpty() && value != null && value >= getRecipientDustThreshold()) {
                 Payment payment;
                 SilentPaymentAddress silentPaymentAddress = silentPaymentAddressProperty.get();
+                if(silentPaymentAddress == null && nip05PaymentProperty.get() != null && nip05PaymentProperty.get().hasSilentPaymentAddress()) {
+                    silentPaymentAddress = nip05PaymentProperty.get().spAddress();
+                }
                 WalletNode consolidationNode = consolidationNodeProperty.get();
                 if(silentPaymentAddress != null) {
                     payment = new SilentPayment(silentPaymentAddress, label.getText(), value, sendAll);
