@@ -41,7 +41,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         AppServices.onEscapePressed(dialogPane.getScene(), this::close);
 
         dialogPane.setPrefWidth(680);
-        dialogPane.setPrefHeight(560);
+        dialogPane.setPrefHeight(620);
         dialogPane.getStylesheets().add(AppServices.class.getResource("app.css").toExternalForm());
         AppServices.moveToActiveWindowScreen(this);
 
@@ -68,7 +68,6 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         // Key method tabs
         keyTabs = new TabPane();
         keyTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        keyTabs.setMaxHeight(160);
 
         // Tab 1: Bunker
         Tab bunkerTab = new Tab("Nostr Connect (Bunker)");
