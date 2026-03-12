@@ -69,19 +69,47 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         // Key method tabs
         keyTabs = new TabPane();
         keyTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        keyTabs.setMinHeight(150);
-        keyTabs.setPrefHeight(170);
+        keyTabs.setMinHeight(170);
+        keyTabs.setPrefHeight(200);
 
-        // Tab 1: Bunker
-        Tab bunkerTab = new Tab("Nostr Connect (Bunker)");
-        VBox bunkerContent = new VBox(6);
+        // Tab 1: Nostr Connect
+        Tab bunkerTab = new Tab("Nostr Connect");
+        VBox bunkerContent = new VBox(8);
         bunkerContent.setPadding(new Insets(10));
-        Label bunkerDesc = new Label("Paste a bunker:// URI from nsec.app, Amber, or nsecBunker. Your private key never touches Sparrow.");
+
+        // Generate nostrconnect URI for nsec.app
+        Nip46BunkerClient tempClient = Nip46BunkerClient.forNostrConnect(null);
+        String connectUri = tempClient.getNostrConnectUri();
+        tempClient.close();
+
+        Label bunkerDesc = new Label("Copy this connection string and paste it into nsec.app, Amber, or your bunker app:");
         bunkerDesc.setWrapText(true);
         bunkerDesc.setStyle("-fx-text-fill: #666; -fx-font-size: 11px;");
+
+        HBox connectUriBox = new HBox(6);
+        connectUriBox.setAlignment(Pos.CENTER_LEFT);
+        TextField connectUriField = new TextField(connectUri);
+        connectUriField.setEditable(false);
+        connectUriField.setStyle("-fx-font-size: 10px;");
+        HBox.setHgrow(connectUriField, Priority.ALWAYS);
+        Button copyUriButton = new Button("Copy");
+        copyUriButton.setOnAction(_ -> {
+            ClipboardContent cc = new ClipboardContent();
+            cc.putString(connectUriField.getText());
+            Clipboard.getSystemClipboard().setContent(cc);
+            copyUriButton.setText("Copied!");
+            new java.util.Timer().schedule(new java.util.TimerTask() {
+                @Override public void run() { javafx.application.Platform.runLater(() -> copyUriButton.setText("Copy")); }
+            }, 2000);
+        });
+        connectUriBox.getChildren().addAll(connectUriField, copyUriButton);
+
+        // Also allow pasting a bunker:// URI
         bunkerUriField = new TextField();
-        bunkerUriField.setPromptText("bunker://<pubkey>?relay=wss://relay.example.com&secret=...");
-        bunkerContent.getChildren().addAll(bunkerDesc, bunkerUriField);
+        bunkerUriField.setPromptText("Or paste a bunker:// URI here");
+        bunkerUriField.setStyle("-fx-font-size: 10px;");
+
+        bunkerContent.getChildren().addAll(bunkerDesc, connectUriBox, bunkerUriField);
         bunkerTab.setContent(bunkerContent);
 
         // Tab 2: Saved Key
@@ -189,7 +217,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         Tab selectedTab = keyTabs.getSelectionModel().getSelectedItem();
         String tabText = selectedTab.getText();
 
-        if(tabText.contains("Bunker")) {
+        if(tabText.contains("Nostr Connect")) {
             pollViaBunker();
         } else if(tabText.contains("Saved")) {
             pollViaSavedKey();
@@ -199,25 +227,26 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
     }
 
     private void pollViaBunker() {
-        String uri = bunkerUriField.getText().trim();
-        if(uri.isEmpty()) {
-            statusLabel.setText("Enter a bunker:// URI");
-            return;
-        }
+        String bunkerUri = bunkerUriField.getText().trim();
 
         Nip46BunkerClient bunker;
-        try {
-            bunker = Nip46BunkerClient.fromUri(uri);
-        } catch(Exception e) {
-            statusLabel.setText("Invalid bunker URI: " + e.getMessage());
-            return;
+        if(!bunkerUri.isEmpty() && bunkerUri.startsWith("bunker://")) {
+            // bunker:// flow
+            try {
+                bunker = Nip46BunkerClient.fromUri(bunkerUri);
+            } catch(Exception e) {
+                statusLabel.setText("Invalid bunker URI: " + e.getMessage());
+                return;
+            }
+        } else {
+            // nostrconnect:// flow — signer connects to us
+            bunker = Nip46BunkerClient.forNostrConnect(null);
         }
 
         checkButton.setDisable(true);
         progress.setVisible(true);
-        statusLabel.setText("Connecting to bunker — approve the request in your bunker app...");
+        statusLabel.setText("Waiting for bunker app to connect — paste the connection string and approve...");
 
-        // Connect and poll in background
         BunkerPollService service = new BunkerPollService(bunker);
         service.setOnSucceeded(_ -> {
             progress.setVisible(false);
