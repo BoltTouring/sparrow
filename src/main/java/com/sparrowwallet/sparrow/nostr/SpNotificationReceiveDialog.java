@@ -34,6 +34,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
     private final ProgressIndicator progress;
     private final Label statusLabel;
     private final ListView<SilentPaymentNotification> notificationList;
+    private final Nip46BunkerClient nostrConnectClient;
 
     public SpNotificationReceiveDialog() {
         final DialogPane dialogPane = getDialogPane();
@@ -77,10 +78,9 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         VBox bunkerContent = new VBox(8);
         bunkerContent.setPadding(new Insets(10));
 
-        // Generate nostrconnect URI for nsec.app
-        Nip46BunkerClient tempClient = Nip46BunkerClient.forNostrConnect(null);
-        String connectUri = tempClient.getNostrConnectUri();
-        tempClient.close();
+        // Generate nostrconnect URI for nsec.app — keep client alive for reuse
+        nostrConnectClient = Nip46BunkerClient.forNostrConnect(null);
+        String connectUri = nostrConnectClient.getNostrConnectUri();
 
         Label bunkerDesc = new Label("Copy this connection string and paste it into nsec.app, Amber, or your bunker app:");
         bunkerDesc.setWrapText(true);
@@ -239,8 +239,8 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
                 return;
             }
         } else {
-            // nostrconnect:// flow — signer connects to us
-            bunker = Nip46BunkerClient.forNostrConnect(null);
+            // nostrconnect:// flow — reuse the client that generated the URI
+            bunker = nostrConnectClient;
         }
 
         checkButton.setDisable(true);
@@ -368,19 +368,15 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
             return new Task<>() {
                 @Override
                 protected List<SilentPaymentNotification> call() throws Exception {
-                    try {
-                        bunker.connect();
-                        String pubkey = bunker.getPublicKey();
+                    bunker.connect();
+                    String pubkey = bunker.getPublicKey();
 
-                        // Create receiver that delegates decryption to the bunker
-                        Nip17Receiver receiver = new Nip17Receiver(pubkey, (senderPubKeyHex, ciphertext) ->
-                                bunker.decrypt(senderPubKeyHex, ciphertext));
+                    // Create receiver that delegates decryption to the bunker
+                    Nip17Receiver receiver = new Nip17Receiver(pubkey, (senderPubKeyHex, ciphertext) ->
+                            bunker.decrypt(senderPubKeyHex, ciphertext));
 
-                        long since = (System.currentTimeMillis() / 1000) - (30 * 86400);
-                        return receiver.pollNotifications(since, null);
-                    } finally {
-                        bunker.close();
-                    }
+                    long since = (System.currentTimeMillis() / 1000) - (30 * 86400);
+                    return receiver.pollNotifications(since, null);
                 }
             };
         }
