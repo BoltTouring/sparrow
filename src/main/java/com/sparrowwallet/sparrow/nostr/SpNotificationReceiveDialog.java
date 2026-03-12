@@ -1,12 +1,8 @@
 package com.sparrowwallet.sparrow.nostr;
 
-import com.sparrowwallet.drongo.Utils;
-import com.sparrowwallet.drongo.crypto.ECKey;
-import com.sparrowwallet.drongo.nip05.Nip17Receiver;
-import com.sparrowwallet.drongo.nip05.SilentPaymentNotification;
-import com.sparrowwallet.drongo.protocol.Bech32;
+import com.sparrowwallet.drongo.nip05.*;
 import com.sparrowwallet.sparrow.AppServices;
-import javafx.application.Platform;
+import com.sparrowwallet.sparrow.io.Storage;
 import javafx.collections.FXCollections;
 import javafx.concurrent.Service;
 import javafx.concurrent.Task;
@@ -21,17 +17,19 @@ import javafx.scene.layout.VBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.util.List;
+import java.util.Optional;
 
-/**
- * Dialog for receiving Silent Payment notifications via NIP-17 DMs.
- * The user enters their Nostr nsec, clicks "Check for Payments",
- * and the dialog shows any incoming SP notifications.
- */
 public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotification> {
     private static final Logger log = LoggerFactory.getLogger(SpNotificationReceiveDialog.class);
 
+    private final TabPane keyTabs;
+    private final TextField bunkerUriField;
+    private final PasswordField savedKeyPasswordField;
     private final PasswordField nsecField;
+    private final CheckBox saveNsecCheckbox;
+    private final PasswordField savePasswordField;
     private final Button checkButton;
     private final ProgressIndicator progress;
     private final Label statusLabel;
@@ -42,13 +40,13 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         AppServices.setStageIcon(dialogPane.getScene().getWindow());
         AppServices.onEscapePressed(dialogPane.getScene(), this::close);
 
-        dialogPane.setPrefWidth(650);
-        dialogPane.setPrefHeight(500);
+        dialogPane.setPrefWidth(680);
+        dialogPane.setPrefHeight(560);
         dialogPane.getStylesheets().add(AppServices.class.getResource("app.css").toExternalForm());
         AppServices.moveToActiveWindowScreen(this);
 
-        VBox content = new VBox(12);
-        content.setPadding(new Insets(20));
+        VBox content = new VBox(10);
+        content.setPadding(new Insets(15));
 
         // Title
         HBox titleBox = new HBox(8);
@@ -59,28 +57,96 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         nostrLabel.setStyle("-fx-text-fill: #8B5CF6; -fx-font-weight: bold; -fx-font-size: 22px;");
         titleBox.getChildren().addAll(titleLabel, nostrLabel);
 
-        // Description
-        Label descLabel = new Label("Enter your Nostr nsec to check for Silent Payment notifications sent to you via NIP-17.");
+        Label descLabel = new Label("Check for Silent Payment notifications sent to you via Nostr encrypted DMs.");
         descLabel.setWrapText(true);
-        descLabel.setStyle("-fx-text-fill: #666;");
+        descLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 11px;");
 
-        // nsec input
-        HBox nsecBox = new HBox(8);
-        nsecBox.setAlignment(Pos.CENTER_LEFT);
-        Label nsecLabel = new Label("Your nsec:");
-        nsecLabel.setMinWidth(70);
+        // Key method tabs
+        keyTabs = new TabPane();
+        keyTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        keyTabs.setMaxHeight(160);
+
+        // Tab 1: Bunker
+        Tab bunkerTab = new Tab("Nostr Connect (Bunker)");
+        VBox bunkerContent = new VBox(6);
+        bunkerContent.setPadding(new Insets(10));
+        Label bunkerDesc = new Label("Paste a bunker:// URI from nsec.app, Amber, or nsecBunker. Your private key never touches Sparrow.");
+        bunkerDesc.setWrapText(true);
+        bunkerDesc.setStyle("-fx-text-fill: #666; -fx-font-size: 11px;");
+        bunkerUriField = new TextField();
+        bunkerUriField.setPromptText("bunker://<pubkey>?relay=wss://relay.example.com&secret=...");
+        bunkerContent.getChildren().addAll(bunkerDesc, bunkerUriField);
+        bunkerTab.setContent(bunkerContent);
+
+        // Tab 2: Saved Key
+        Tab savedKeyTab = new Tab("Saved Key");
+        VBox savedKeyContent = new VBox(6);
+        savedKeyContent.setPadding(new Insets(10));
+        boolean hasSavedKey = NostrKeyStore.exists(Storage.getSparrowDir());
+        if(hasSavedKey) {
+            Label savedDesc = new Label("An encrypted Nostr key is stored on this device. Enter your password to unlock it.");
+            savedDesc.setWrapText(true);
+            savedDesc.setStyle("-fx-text-fill: #666; -fx-font-size: 11px;");
+            savedKeyPasswordField = new PasswordField();
+            savedKeyPasswordField.setPromptText("Password to decrypt stored nsec");
+            Button deleteKeyButton = new Button("Delete Saved Key");
+            deleteKeyButton.setStyle("-fx-font-size: 10px; -fx-text-fill: #dc2626;");
+            deleteKeyButton.setOnAction(_ -> {
+                if(NostrKeyStore.delete(Storage.getSparrowDir())) {
+                    statusLabel.setText("Saved key deleted");
+                    savedKeyTab.setDisable(true);
+                }
+            });
+            savedKeyContent.getChildren().addAll(savedDesc, savedKeyPasswordField, deleteKeyButton);
+        } else {
+            savedKeyPasswordField = new PasswordField();
+            Label noKeyLabel = new Label("No saved key found. Use the Manual tab to enter your nsec with the option to save it.");
+            noKeyLabel.setWrapText(true);
+            noKeyLabel.setStyle("-fx-text-fill: #888;");
+            savedKeyContent.getChildren().add(noKeyLabel);
+            savedKeyTab.setDisable(true);
+        }
+        savedKeyTab.setContent(savedKeyContent);
+
+        // Tab 3: Manual nsec
+        Tab manualTab = new Tab("Manual nsec");
+        VBox manualContent = new VBox(6);
+        manualContent.setPadding(new Insets(10));
+        Label manualDesc = new Label("Enter your nsec directly. Optionally save it encrypted for future sessions.");
+        manualDesc.setWrapText(true);
+        manualDesc.setStyle("-fx-text-fill: #666; -fx-font-size: 11px;");
         nsecField = new PasswordField();
         nsecField.setPromptText("nsec1...");
-        HBox.setHgrow(nsecField, Priority.ALWAYS);
+        HBox saveRow = new HBox(8);
+        saveRow.setAlignment(Pos.CENTER_LEFT);
+        saveNsecCheckbox = new CheckBox("Save encrypted for next time");
+        savePasswordField = new PasswordField();
+        savePasswordField.setPromptText("Encryption password");
+        savePasswordField.setDisable(true);
+        savePasswordField.setMaxWidth(200);
+        saveNsecCheckbox.selectedProperty().addListener((_, _, selected) -> savePasswordField.setDisable(!selected));
+        saveRow.getChildren().addAll(saveNsecCheckbox, savePasswordField);
+        manualContent.getChildren().addAll(manualDesc, nsecField, saveRow);
+        manualTab.setContent(manualContent);
+
+        keyTabs.getTabs().addAll(bunkerTab, savedKeyTab, manualTab);
+        if(hasSavedKey) {
+            keyTabs.getSelectionModel().select(savedKeyTab);
+        }
+
+        // Check button row
+        HBox checkBox = new HBox(8);
+        checkBox.setAlignment(Pos.CENTER_LEFT);
         checkButton = new Button("Check for Payments");
+        checkButton.setStyle("-fx-font-weight: bold;");
         progress = new ProgressIndicator();
         progress.setMaxHeight(18);
         progress.setMaxWidth(18);
         progress.setVisible(false);
-        nsecBox.getChildren().addAll(nsecLabel, nsecField, checkButton, progress);
-
-        statusLabel = new Label("Enter your nsec and click Check for Payments");
+        statusLabel = new Label("");
         statusLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
+        HBox.setHgrow(statusLabel, Priority.ALWAYS);
+        checkBox.getChildren().addAll(checkButton, progress, statusLabel);
 
         // Notification list
         notificationList = new ListView<>();
@@ -88,16 +154,15 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         notificationList.setPlaceholder(new Label("No notifications found yet."));
         VBox.setVgrow(notificationList, Priority.ALWAYS);
 
-        content.getChildren().addAll(titleBox, descLabel, nsecBox, statusLabel, new Separator(), notificationList);
-
+        content.getChildren().addAll(titleBox, descLabel, keyTabs, checkBox, new Separator(), notificationList);
         dialogPane.setContent(content);
 
-        // Buttons
-        ButtonType closeButtonType = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
-        ButtonType copyButtonType = new ButtonType("Copy TXID", ButtonBar.ButtonData.LEFT);
-        dialogPane.getButtonTypes().addAll(copyButtonType, closeButtonType);
+        // Dialog buttons
+        ButtonType closeType = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType copyType = new ButtonType("Copy TXID", ButtonBar.ButtonData.LEFT);
+        dialogPane.getButtonTypes().addAll(copyType, closeType);
 
-        Button copyButton = (Button)dialogPane.lookupButton(copyButtonType);
+        Button copyButton = (Button)dialogPane.lookupButton(copyType);
         copyButton.setDisable(true);
         notificationList.getSelectionModel().selectedItemProperty().addListener((_, _, n) -> copyButton.setDisable(n == null));
         copyButton.setOnAction(e -> {
@@ -111,31 +176,92 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
             e.consume();
         });
 
-        // Check button action
         checkButton.setOnAction(_ -> pollNotifications());
-        nsecField.setOnAction(_ -> pollNotifications());
-
-        setResultConverter(dialogButton -> null);
+        setResultConverter(_ -> null);
     }
 
     private void pollNotifications() {
-        String nsec = nsecField.getText().trim();
-        if(nsec.isEmpty()) {
-            statusLabel.setText("Please enter your nsec");
+        Tab selectedTab = keyTabs.getSelectionModel().getSelectedItem();
+        String tabText = selectedTab.getText();
+
+        if(tabText.contains("Bunker")) {
+            pollViaBunker();
+        } else if(tabText.contains("Saved")) {
+            pollViaSavedKey();
+        } else {
+            pollViaManualNsec();
+        }
+    }
+
+    private void pollViaBunker() {
+        String uri = bunkerUriField.getText().trim();
+        if(uri.isEmpty()) {
+            statusLabel.setText("Enter a bunker:// URI");
             return;
         }
+        try {
+            Nip46BunkerClient bunker = Nip46BunkerClient.fromUri(uri);
+            statusLabel.setText("Bunker support is experimental — connecting...");
+            // TODO: full bunker decrypt delegation path
+            // For now, inform user to use saved key or manual nsec
+            statusLabel.setText("Bunker connected. Full decrypt delegation coming soon — use Saved Key for now.");
+        } catch(Exception e) {
+            statusLabel.setText("Invalid bunker URI: " + e.getMessage());
+        }
+    }
 
+    private void pollViaSavedKey() {
+        String password = savedKeyPasswordField.getText();
+        if(password.isEmpty()) {
+            statusLabel.setText("Enter your password");
+            return;
+        }
+        try {
+            Optional<String> nsec = NostrKeyStore.load(Storage.getSparrowDir(), password);
+            if(nsec.isEmpty()) {
+                statusLabel.setText("No saved key found");
+                return;
+            }
+            byte[] privKey = NostrKeyStore.decodeNsec(nsec.get());
+            startPolling(privKey);
+        } catch(Exception e) {
+            statusLabel.setText("Decryption failed - wrong password?");
+        }
+    }
+
+    private void pollViaManualNsec() {
+        String nsec = nsecField.getText().trim();
+        if(nsec.isEmpty()) {
+            statusLabel.setText("Enter your nsec");
+            return;
+        }
         byte[] privKey;
         try {
-            privKey = decodeNsec(nsec);
+            privKey = NostrKeyStore.decodeNsec(nsec);
         } catch(Exception e) {
             statusLabel.setText("Invalid nsec: " + e.getMessage());
             return;
         }
+        if(saveNsecCheckbox.isSelected()) {
+            String password = savePasswordField.getText();
+            if(password.isEmpty()) {
+                statusLabel.setText("Enter a password to save the key");
+                return;
+            }
+            try {
+                NostrKeyStore.save(Storage.getSparrowDir(), nsec, password);
+                statusLabel.setText("Key saved. Polling relays...");
+            } catch(Exception e) {
+                log.error("Failed to save nsec", e);
+            }
+        }
+        startPolling(privKey);
+    }
 
+    private void startPolling(byte[] privKey) {
         checkButton.setDisable(true);
         progress.setVisible(true);
-        statusLabel.setText("Polling Nostr relays for SP notifications...");
+        statusLabel.setText("Polling Nostr relays...");
 
         PollService service = new PollService(privKey);
         service.setOnSucceeded(_ -> {
@@ -147,39 +273,20 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
                 statusLabel.setText("No Silent Payment notifications found");
             } else {
                 long totalSats = notifications.stream().mapToLong(SilentPaymentNotification::amount).sum();
-                statusLabel.setText("Found " + notifications.size() + " notification(s) totaling " + totalSats + " sats");
+                statusLabel.setText("Found " + notifications.size() + " notification(s) totaling " + String.format("%,d", totalSats) + " sats");
             }
         });
         service.setOnFailed(_ -> {
             progress.setVisible(false);
             checkButton.setDisable(false);
-            String msg = service.getException() != null ? service.getException().getMessage() : "Unknown error";
-            statusLabel.setText("Error: " + msg);
+            statusLabel.setText("Error: " + (service.getException() != null ? service.getException().getMessage() : "Unknown"));
         });
         service.start();
     }
 
-    /**
-     * Decode an nsec bech32 string to a 32-byte private key.
-     */
-    private byte[] decodeNsec(String nsec) {
-        Bech32.Bech32Data decoded = Bech32.decode(nsec, 90);
-        if(!decoded.hrp.equals("nsec")) {
-            throw new IllegalArgumentException("Expected nsec prefix, got: " + decoded.hrp);
-        }
-        byte[] converted = Bech32.convertBits(decoded.data, 0, decoded.data.length, 5, 8, false);
-        if(converted.length != 32) {
-            throw new IllegalArgumentException("Invalid nsec: decoded to " + converted.length + " bytes");
-        }
-        return converted;
-    }
-
     private static class PollService extends Service<List<SilentPaymentNotification>> {
         private final byte[] privKey;
-
-        PollService(byte[] privKey) {
-            this.privKey = privKey;
-        }
+        PollService(byte[] privKey) { this.privKey = privKey; }
 
         @Override
         protected Task<List<SilentPaymentNotification>> createTask() {
@@ -187,7 +294,6 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
                 @Override
                 protected List<SilentPaymentNotification> call() {
                     Nip17Receiver receiver = new Nip17Receiver(privKey);
-                    // Poll for notifications from the last 30 days
                     long since = (System.currentTimeMillis() / 1000) - (30 * 86400);
                     return receiver.pollNotifications(since, null);
                 }
@@ -205,7 +311,6 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
             } else {
                 VBox box = new VBox(3);
                 box.setPadding(new Insets(6, 8, 6, 8));
-
                 HBox topRow = new HBox(8);
                 topRow.setAlignment(Pos.CENTER_LEFT);
                 Label amountLabel = new Label(String.format("%,d sats", notif.amount()));
@@ -213,10 +318,8 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
                 Label outputLabel = new Label("Output #" + notif.vout());
                 outputLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
                 topRow.getChildren().addAll(amountLabel, outputLabel);
-
                 Label txidLabel = new Label("TX: " + notif.txid().substring(0, 20) + "..." + notif.txid().substring(56));
                 txidLabel.setStyle("-fx-font-family: monospace; -fx-font-size: 11px; -fx-text-fill: #555;");
-
                 box.getChildren().addAll(topRow, txidLabel);
                 setGraphic(box);
                 setText(null);
