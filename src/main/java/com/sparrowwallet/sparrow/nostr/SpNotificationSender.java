@@ -61,12 +61,6 @@ public class SpNotificationSender {
                                 // Use a random sender key — recipient verifies the UTXO on-chain, not the DM sender
                                 byte[] senderKey = new byte[32];
                                 new SecureRandom().nextBytes(senderKey);
-                                // Ensure valid private key
-                                while(new java.math.BigInteger(1, senderKey).compareTo(
-                                        com.sparrowwallet.drongo.crypto.ECKey.CURVE.getCurve().getOrder()) >= 0
-                                        || new java.math.BigInteger(1, senderKey).equals(java.math.BigInteger.ZERO)) {
-                                    new SecureRandom().nextBytes(senderKey);
-                                }
 
                                 Nip17Sender sender = new Nip17Sender(senderKey);
                                 sender.sendNotification(recipientPubKey, notification, null);
@@ -94,7 +88,7 @@ public class SpNotificationSender {
      */
     private static int findOutputIndex(Transaction transaction, Payment payment) {
         if(payment.getAddress() == null) return -1;
-        byte[] targetScript = payment.getAddress().getOutputScript();
+        byte[] targetScript = payment.getAddress().getOutputScript().getProgram();
 
         for(int i = 0; i < transaction.getOutputs().size(); i++) {
             TransactionOutput output = transaction.getOutputs().get(i);

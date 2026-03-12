@@ -48,6 +48,10 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         VBox content = new VBox(10);
         content.setPadding(new Insets(15));
 
+        // Initialize early — referenced by delete button lambda
+        statusLabel = new Label("");
+        statusLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
+
         // Title
         HBox titleBox = new HBox(8);
         titleBox.setAlignment(Pos.CENTER_LEFT);
@@ -143,8 +147,6 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         progress.setMaxHeight(18);
         progress.setMaxWidth(18);
         progress.setVisible(false);
-        statusLabel = new Label("");
-        statusLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
         HBox.setHgrow(statusLabel, Priority.ALWAYS);
         checkBox.getChildren().addAll(checkButton, progress, statusLabel);
 
