@@ -51,6 +51,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         // Initialize early — referenced by delete button lambda
         statusLabel = new Label("");
         statusLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
+        statusLabel.setWrapText(true);
 
         // Title
         HBox titleBox = new HBox(8);
@@ -68,6 +69,8 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         // Key method tabs
         keyTabs = new TabPane();
         keyTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        keyTabs.setMinHeight(150);
+        keyTabs.setPrefHeight(170);
 
         // Tab 1: Bunker
         Tab bunkerTab = new Tab("Nostr Connect (Bunker)");
@@ -153,6 +156,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         notificationList = new ListView<>();
         notificationList.setCellFactory(_ -> new NotificationCell());
         notificationList.setPlaceholder(new Label("No notifications found yet."));
+        notificationList.setPrefHeight(200);
         VBox.setVgrow(notificationList, Priority.ALWAYS);
 
         content.getChildren().addAll(titleBox, descLabel, keyTabs, checkBox, new Separator(), notificationList);
@@ -201,11 +205,8 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
             return;
         }
         try {
-            Nip46BunkerClient bunker = Nip46BunkerClient.fromUri(uri);
-            statusLabel.setText("Bunker support is experimental — connecting...");
-            // TODO: full bunker decrypt delegation path
-            // For now, inform user to use saved key or manual nsec
-            statusLabel.setText("Bunker connected. Full decrypt delegation coming soon — use Saved Key for now.");
+            Nip46BunkerClient.fromUri(uri); // Validates the URI format
+            statusLabel.setText("Bunker URI is valid. Full NIP-46 decrypt delegation is in development — use Manual nsec or Saved Key tab for now.");
         } catch(Exception e) {
             statusLabel.setText("Invalid bunker URI: " + e.getMessage());
         }
