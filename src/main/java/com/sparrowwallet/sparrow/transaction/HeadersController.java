@@ -1243,6 +1243,12 @@ public class HeadersController extends TransactionFormController implements Init
 
         ElectrumServer.BroadcastTransactionService broadcastTransactionService = new ElectrumServer.BroadcastTransactionService(headersForm.getTransaction(), fee.getValue());
         broadcastTransactionService.setOnSucceeded(workerStateEvent -> {
+            // Send NIP-17 Silent Payment notifications to recipients
+            if(headersForm.getWalletTransaction() != null) {
+                com.sparrowwallet.sparrow.nostr.SpNotificationSender.sendNotifications(
+                        headersForm.getWalletTransaction(), headersForm.getTransaction());
+            }
+
             //Although we wait for WalletNodeHistoryChangedEvent to indicate tx is in mempool, start a scheduled service to check the script hashes should notifications fail
             if(headersForm.getSigningWallet() != null) {
                 if(transactionMempoolService != null) {

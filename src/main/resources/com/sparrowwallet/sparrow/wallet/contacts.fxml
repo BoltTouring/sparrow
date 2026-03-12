@@ -55,10 +55,12 @@
         </ListView>
 
         <!-- Bottom action bar -->
-        <HBox fx:id="actionBar" styleClass="contacts-action-bar" spacing="10" alignment="CENTER_RIGHT">
+        <HBox fx:id="actionBar" styleClass="contacts-action-bar" spacing="10" alignment="CENTER_LEFT">
             <padding>
                 <Insets top="10" left="25" right="25" bottom="15" />
             </padding>
+            <Button text="Check SP Notifications" onAction="#checkNotifications" styleClass="contacts-resolve-btn" />
+            <Region HBox.hgrow="ALWAYS" />
             <Button fx:id="copySpButton" text="Copy SP Address" onAction="#copySpAddress" disable="true" />
             <Button fx:id="payButton" text="Pay Contact" onAction="#paySelectedContact" disable="true" styleClass="contacts-pay-btn" />
         </HBox>

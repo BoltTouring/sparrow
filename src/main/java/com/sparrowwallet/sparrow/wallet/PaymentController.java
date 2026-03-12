@@ -571,6 +571,12 @@ public class PaymentController extends WalletFormController implements Initializ
         setSilentPaymentAddress(nip05Payment.spAddress());
         address.setText(nip05Payment.hrn());
 
+        // Register for post-broadcast NIP-17 notification
+        if(nip05Payment.nostrPubkey() != null) {
+            com.sparrowwallet.sparrow.nostr.SpNotificationCache.register(
+                    nip05Payment.spAddress().getAddress(), nip05Payment.nostrPubkey());
+        }
+
         // Re-add listener and trigger a single clean revalidation
         address.textProperty().addListener(addressListener);
         revalidate(address, addressListener);

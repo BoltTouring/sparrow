@@ -8,6 +8,7 @@ import com.sparrowwallet.sparrow.EventManager;
 import com.sparrowwallet.sparrow.control.CopyableTextField;
 import com.sparrowwallet.sparrow.event.SendActionEvent;
 import com.sparrowwallet.sparrow.io.Storage;
+import com.sparrowwallet.sparrow.nostr.SpNotificationReceiveDialog;
 import javafx.animation.PauseTransition;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -283,6 +284,13 @@ public class ContactsController extends WalletFormController implements Initiali
         });
 
         service.start();
+    }
+
+    @FXML
+    public void checkNotifications() {
+        SpNotificationReceiveDialog dialog = new SpNotificationReceiveDialog();
+        dialog.initOwner(contactsList.getScene().getWindow());
+        dialog.showAndWait();
     }
 
     @FXML
