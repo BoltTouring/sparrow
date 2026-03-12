@@ -215,7 +215,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
 
         checkButton.setDisable(true);
         progress.setVisible(true);
-        statusLabel.setText("Connecting to bunker...");
+        statusLabel.setText("Connecting to bunker — approve the request in your bunker app...");
 
         // Connect and poll in background
         BunkerPollService service = new BunkerPollService(bunker);
