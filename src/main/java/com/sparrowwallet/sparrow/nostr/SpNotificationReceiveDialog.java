@@ -204,12 +204,39 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
             statusLabel.setText("Enter a bunker:// URI");
             return;
         }
+
+        Nip46BunkerClient bunker;
         try {
-            Nip46BunkerClient.fromUri(uri); // Validates the URI format
-            statusLabel.setText("Bunker URI is valid. Full NIP-46 decrypt delegation is in development — use Manual nsec or Saved Key tab for now.");
+            bunker = Nip46BunkerClient.fromUri(uri);
         } catch(Exception e) {
             statusLabel.setText("Invalid bunker URI: " + e.getMessage());
+            return;
         }
+
+        checkButton.setDisable(true);
+        progress.setVisible(true);
+        statusLabel.setText("Connecting to bunker...");
+
+        // Connect and poll in background
+        BunkerPollService service = new BunkerPollService(bunker);
+        service.setOnSucceeded(_ -> {
+            progress.setVisible(false);
+            checkButton.setDisable(false);
+            List<SilentPaymentNotification> notifications = service.getValue();
+            notificationList.setItems(FXCollections.observableList(notifications));
+            if(notifications.isEmpty()) {
+                statusLabel.setText("No Silent Payment notifications found");
+            } else {
+                long totalSats = notifications.stream().mapToLong(SilentPaymentNotification::amount).sum();
+                statusLabel.setText("Found " + notifications.size() + " notification(s) totaling " + String.format("%,d", totalSats) + " sats");
+            }
+        });
+        service.setOnFailed(_ -> {
+            progress.setVisible(false);
+            checkButton.setDisable(false);
+            statusLabel.setText("Bunker error: " + (service.getException() != null ? service.getException().getMessage() : "Unknown"));
+        });
+        service.start();
     }
 
     private void pollViaSavedKey() {
@@ -298,6 +325,33 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
                     Nip17Receiver receiver = new Nip17Receiver(privKey);
                     long since = (System.currentTimeMillis() / 1000) - (30 * 86400);
                     return receiver.pollNotifications(since, null);
+                }
+            };
+        }
+    }
+
+    private static class BunkerPollService extends Service<List<SilentPaymentNotification>> {
+        private final Nip46BunkerClient bunker;
+        BunkerPollService(Nip46BunkerClient bunker) { this.bunker = bunker; }
+
+        @Override
+        protected Task<List<SilentPaymentNotification>> createTask() {
+            return new Task<>() {
+                @Override
+                protected List<SilentPaymentNotification> call() throws Exception {
+                    try {
+                        bunker.connect();
+                        String pubkey = bunker.getPublicKey();
+
+                        // Create receiver that delegates decryption to the bunker
+                        Nip17Receiver receiver = new Nip17Receiver(pubkey, (senderPubKeyHex, ciphertext) ->
+                                bunker.decrypt(senderPubKeyHex, ciphertext));
+
+                        long since = (System.currentTimeMillis() / 1000) - (30 * 86400);
+                        return receiver.pollNotifications(since, null);
+                    } finally {
+                        bunker.close();
+                    }
                 }
             };
         }
