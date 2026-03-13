@@ -35,6 +35,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
     private final Label statusLabel;
     private final ListView<SilentPaymentNotification> notificationList;
     private final Nip46BunkerClient nostrConnectClient;
+    private boolean bunkerConnected = false;
 
     public SpNotificationReceiveDialog() {
         final DialogPane dialogPane = getDialogPane();
@@ -231,30 +232,36 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
 
         Nip46BunkerClient bunker;
         if(!bunkerUri.isEmpty() && bunkerUri.startsWith("bunker://")) {
-            // bunker:// flow
             try {
                 bunker = Nip46BunkerClient.fromUri(bunkerUri);
+                bunkerConnected = false; // New bunker:// client, not yet connected
             } catch(Exception e) {
                 statusLabel.setText("Invalid bunker URI: " + e.getMessage());
                 return;
             }
         } else {
-            // nostrconnect:// flow — reuse the client that generated the URI
             bunker = nostrConnectClient;
         }
 
         checkButton.setDisable(true);
         progress.setVisible(true);
-        statusLabel.setText("Waiting for bunker app to connect — paste the connection string and approve...");
+        if(bunkerConnected) {
+            statusLabel.setText("Polling relays for notifications...");
+        } else {
+            statusLabel.setText("Connecting to bunker — paste the connection string into nsec.app and approve...");
+        }
 
-        BunkerPollService service = new BunkerPollService(bunker);
+        boolean needsConnect = !bunkerConnected;
+        BunkerPollService service = new BunkerPollService(bunker, needsConnect);
         service.setOnSucceeded(_ -> {
+            bunkerConnected = true;
             progress.setVisible(false);
             checkButton.setDisable(false);
+            checkButton.setText("Check Again");
             List<SilentPaymentNotification> notifications = service.getValue();
             notificationList.setItems(FXCollections.observableList(notifications));
             if(notifications.isEmpty()) {
-                statusLabel.setText("No Silent Payment notifications found");
+                statusLabel.setText("Connected. No Silent Payment notifications found.");
             } else {
                 long totalSats = notifications.stream().mapToLong(SilentPaymentNotification::amount).sum();
                 statusLabel.setText("Found " + notifications.size() + " notification(s) totaling " + String.format("%,d", totalSats) + " sats");
@@ -361,17 +368,22 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
 
     private static class BunkerPollService extends Service<List<SilentPaymentNotification>> {
         private final Nip46BunkerClient bunker;
-        BunkerPollService(Nip46BunkerClient bunker) { this.bunker = bunker; }
+        private final boolean needsConnect;
+        BunkerPollService(Nip46BunkerClient bunker, boolean needsConnect) {
+            this.bunker = bunker;
+            this.needsConnect = needsConnect;
+        }
 
         @Override
         protected Task<List<SilentPaymentNotification>> createTask() {
             return new Task<>() {
                 @Override
                 protected List<SilentPaymentNotification> call() throws Exception {
-                    bunker.connect();
+                    if(needsConnect) {
+                        bunker.connect();
+                    }
                     String pubkey = bunker.getPublicKey();
 
-                    // Create receiver that delegates decryption to the bunker
                     Nip17Receiver receiver = new Nip17Receiver(pubkey, (senderPubKeyHex, ciphertext) ->
                             bunker.decrypt(senderPubKeyHex, ciphertext));
 
