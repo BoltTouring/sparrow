@@ -83,6 +83,9 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         nostrConnectClient = Nip46BunkerClient.forNostrConnect(null);
         String connectUri = nostrConnectClient.getNostrConnectUri();
 
+        // Start listening on relay immediately so we catch the signer's response
+        nostrConnectClient.startListening();
+
         Label bunkerDesc = new Label("Copy this connection string and paste it into nsec.app, Amber, or your bunker app:");
         bunkerDesc.setWrapText(true);
         bunkerDesc.setStyle("-fx-text-fill: #666; -fx-font-size: 11px;");
@@ -231,28 +234,37 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         String bunkerUri = bunkerUriField.getText().trim();
 
         Nip46BunkerClient bunker;
+        boolean isNostrConnect;
         if(!bunkerUri.isEmpty() && bunkerUri.startsWith("bunker://")) {
             try {
                 bunker = Nip46BunkerClient.fromUri(bunkerUri);
-                bunkerConnected = false; // New bunker:// client, not yet connected
+                bunkerConnected = false;
+                isNostrConnect = false;
             } catch(Exception e) {
                 statusLabel.setText("Invalid bunker URI: " + e.getMessage());
                 return;
             }
         } else {
             bunker = nostrConnectClient;
+            isNostrConnect = true;
+            // Check if signer already connected while we were showing the URI
+            if(bunker.isSignerConnected()) {
+                bunkerConnected = true;
+            }
         }
 
         checkButton.setDisable(true);
         progress.setVisible(true);
         if(bunkerConnected) {
             statusLabel.setText("Polling relays for notifications...");
+        } else if(isNostrConnect) {
+            statusLabel.setText("Waiting for nsec.app to connect — copy the connection string above and paste it...");
         } else {
-            statusLabel.setText("Connecting to bunker — paste the connection string into nsec.app and approve...");
+            statusLabel.setText("Connecting to bunker — approve the request in nsec.app...");
         }
 
         boolean needsConnect = !bunkerConnected;
-        BunkerPollService service = new BunkerPollService(bunker, needsConnect);
+        BunkerPollService service = new BunkerPollService(bunker, needsConnect, isNostrConnect);
         service.setOnSucceeded(_ -> {
             bunkerConnected = true;
             progress.setVisible(false);
@@ -369,9 +381,11 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
     private static class BunkerPollService extends Service<List<SilentPaymentNotification>> {
         private final Nip46BunkerClient bunker;
         private final boolean needsConnect;
-        BunkerPollService(Nip46BunkerClient bunker, boolean needsConnect) {
+        private final boolean isNostrConnect;
+        BunkerPollService(Nip46BunkerClient bunker, boolean needsConnect, boolean isNostrConnect) {
             this.bunker = bunker;
             this.needsConnect = needsConnect;
+            this.isNostrConnect = isNostrConnect;
         }
 
         @Override
@@ -380,7 +394,13 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
                 @Override
                 protected List<SilentPaymentNotification> call() throws Exception {
                     if(needsConnect) {
-                        bunker.connect();
+                        if(isNostrConnect) {
+                            // nostrconnect: WebSocket already pre-connected, just wait for signer
+                            bunker.waitForSigner();
+                        } else {
+                            // bunker://: full connect flow
+                            bunker.connect();
+                        }
                     }
                     String pubkey = bunker.getPublicKey();
 
