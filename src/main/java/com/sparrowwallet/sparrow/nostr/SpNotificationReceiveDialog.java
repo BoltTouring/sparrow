@@ -38,6 +38,14 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
     private boolean bunkerConnected = false;
 
     public SpNotificationReceiveDialog() {
+        // Run NIP-44 self-test immediately
+        String nip44Result = Nip44.selfTest();
+        if(nip44Result != null) {
+            log.error("NIP-44 SELF-TEST FAILED: " + nip44Result);
+        } else {
+            log.info("NIP-44 self-test PASSED (conversation key + payload + round-trip)");
+        }
+
         final DialogPane dialogPane = getDialogPane();
         AppServices.setStageIcon(dialogPane.getScene().getWindow());
         AppServices.onEscapePressed(dialogPane.getScene(), this::close);
@@ -82,6 +90,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         // Generate nostrconnect URI for nsec.app — keep client alive for reuse
         nostrConnectClient = Nip46BunkerClient.forNostrConnect(null);
         String connectUri = nostrConnectClient.getNostrConnectUri();
+        log.info("NIP-46: generated nostrconnect URI: " + connectUri);
 
         // Start listening on relay immediately so we catch the signer's response
         nostrConnectClient.startListening();
