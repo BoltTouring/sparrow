@@ -1,8 +1,11 @@
 package com.sparrowwallet.sparrow.nostr;
 
 import com.sparrowwallet.drongo.nip05.*;
+import com.sparrowwallet.drongo.protocol.Sha256Hash;
+import com.sparrowwallet.drongo.wallet.BlockTransaction;
 import com.sparrowwallet.sparrow.AppServices;
 import com.sparrowwallet.sparrow.io.Storage;
+import com.sparrowwallet.sparrow.net.ElectrumServer;
 import javafx.collections.FXCollections;
 import javafx.concurrent.Service;
 import javafx.concurrent.Task;
@@ -19,7 +22,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotification> {
     private static final Logger log = LoggerFactory.getLogger(SpNotificationReceiveDialog.class);
@@ -33,7 +38,8 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
     private final Button checkButton;
     private final ProgressIndicator progress;
     private final Label statusLabel;
-    private final ListView<SilentPaymentNotification> notificationList;
+    private final ListView<SilentPaymentNotification.Verifiable> notificationList;
+    private final Button verifyButton;
     private final Nip46BunkerClient nostrConnectClient;
     private boolean bunkerConnected = false;
 
@@ -200,7 +206,15 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         notificationList.setPrefHeight(200);
         VBox.setVgrow(notificationList, Priority.ALWAYS);
 
-        content.getChildren().addAll(titleBox, descLabel, keyTabs, checkBox, new Separator(), notificationList);
+        // Verify button below the list
+        verifyButton = new Button("Verify on Chain");
+        verifyButton.setDisable(true);
+        verifyButton.setOnAction(_ -> verifyNotifications());
+        HBox verifyBox = new HBox(8, verifyButton);
+        verifyBox.setAlignment(Pos.CENTER_LEFT);
+        verifyBox.setPadding(new Insets(4, 0, 0, 0));
+
+        content.getChildren().addAll(titleBox, descLabel, keyTabs, checkBox, new Separator(), notificationList, verifyBox);
         dialogPane.setContent(content);
 
         // Dialog buttons
@@ -212,7 +226,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         copyButton.setDisable(true);
         notificationList.getSelectionModel().selectedItemProperty().addListener((_, _, n) -> copyButton.setDisable(n == null));
         copyButton.setOnAction(e -> {
-            SilentPaymentNotification selected = notificationList.getSelectionModel().getSelectedItem();
+            SilentPaymentNotification.Verifiable selected = notificationList.getSelectionModel().getSelectedItem();
             if(selected != null) {
                 ClipboardContent cc = new ClipboardContent();
                 cc.putString(selected.txid());
@@ -280,13 +294,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
             checkButton.setDisable(false);
             checkButton.setText("Check Again");
             List<SilentPaymentNotification> notifications = service.getValue();
-            notificationList.setItems(FXCollections.observableList(notifications));
-            if(notifications.isEmpty()) {
-                statusLabel.setText("Connected. No Silent Payment notifications found.");
-            } else {
-                long totalSats = notifications.stream().mapToLong(SilentPaymentNotification::amount).sum();
-                statusLabel.setText("Found " + notifications.size() + " notification(s) totaling " + String.format("%,d", totalSats) + " sats");
-            }
+            displayNotifications(notifications);
         });
         service.setOnFailed(_ -> {
             progress.setVisible(false);
@@ -354,13 +362,7 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
             progress.setVisible(false);
             checkButton.setDisable(false);
             List<SilentPaymentNotification> notifications = service.getValue();
-            notificationList.setItems(FXCollections.observableList(notifications));
-            if(notifications.isEmpty()) {
-                statusLabel.setText("No Silent Payment notifications found");
-            } else {
-                long totalSats = notifications.stream().mapToLong(SilentPaymentNotification::amount).sum();
-                statusLabel.setText("Found " + notifications.size() + " notification(s) totaling " + String.format("%,d", totalSats) + " sats");
-            }
+            displayNotifications(notifications);
         });
         service.setOnFailed(_ -> {
             progress.setVisible(false);
@@ -368,6 +370,81 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
             statusLabel.setText("Error: " + (service.getException() != null ? service.getException().getMessage() : "Unknown"));
         });
         service.start();
+    }
+
+    private void displayNotifications(List<SilentPaymentNotification> notifications) {
+        List<SilentPaymentNotification.Verifiable> verifiables = notifications.stream()
+                .map(SilentPaymentNotification.Verifiable::new)
+                .collect(java.util.stream.Collectors.toList());
+        notificationList.setItems(FXCollections.observableList(verifiables));
+        if(notifications.isEmpty()) {
+            statusLabel.setText("No Silent Payment notifications found");
+            verifyButton.setDisable(true);
+        } else {
+            long totalSats = notifications.stream().mapToLong(SilentPaymentNotification::amount).sum();
+            statusLabel.setText("Found " + notifications.size() + " notification(s) totaling " + String.format("%,d", totalSats) + " sats");
+            verifyButton.setDisable(!AppServices.isConnected());
+        }
+    }
+
+    private void verifyNotifications() {
+        if(notificationList.getItems().isEmpty()) return;
+        if(!AppServices.isConnected()) {
+            statusLabel.setText("Not connected to Electrum server — cannot verify");
+            return;
+        }
+
+        verifyButton.setDisable(true);
+        statusLabel.setText("Verifying on chain...");
+
+        // Collect txids to fetch
+        Set<Sha256Hash> txids = new java.util.HashSet<>();
+        for(SilentPaymentNotification.Verifiable v : notificationList.getItems()) {
+            v.setStatus(SilentPaymentNotification.VerificationStatus.VERIFYING);
+            txids.add(Sha256Hash.wrap(v.txid()));
+        }
+        notificationList.refresh();
+
+        // Fetch transactions from Electrum
+        ElectrumServer.TransactionReferenceService txService = new ElectrumServer.TransactionReferenceService(txids);
+        txService.setOnSucceeded(_ -> {
+            Map<Sha256Hash, BlockTransaction> txMap = txService.getValue();
+            int verified = 0, failed = 0;
+            for(SilentPaymentNotification.Verifiable v : notificationList.getItems()) {
+                Sha256Hash txHash = Sha256Hash.wrap(v.txid());
+                BlockTransaction blockTx = txMap.get(txHash);
+                if(blockTx == null) {
+                    v.setStatus(SilentPaymentNotification.VerificationStatus.FAILED);
+                    v.setError("Transaction not found on chain");
+                    failed++;
+                } else {
+                    SpNotificationVerifier.VerificationResult result =
+                            SpNotificationVerifier.verifyBasic(v.notification(), blockTx.getTransaction());
+                    if(result.verified()) {
+                        v.setStatus(SilentPaymentNotification.VerificationStatus.VERIFIED);
+                        failed -= 0; // no-op, just for clarity
+                        verified++;
+                    } else {
+                        v.setStatus(SilentPaymentNotification.VerificationStatus.FAILED);
+                        v.setError(result.error());
+                        failed++;
+                    }
+                }
+            }
+            notificationList.refresh();
+            verifyButton.setDisable(false);
+            statusLabel.setText("Verified: " + verified + " ✓  Failed: " + failed + " ✗");
+        });
+        txService.setOnFailed(_ -> {
+            for(SilentPaymentNotification.Verifiable v : notificationList.getItems()) {
+                v.setStatus(SilentPaymentNotification.VerificationStatus.FAILED);
+                v.setError("Electrum server error");
+            }
+            notificationList.refresh();
+            verifyButton.setDisable(false);
+            statusLabel.setText("Verification failed: " + (txService.getException() != null ? txService.getException().getMessage() : "Unknown error"));
+        });
+        txService.start();
     }
 
     private static class PollService extends Service<List<SilentPaymentNotification>> {
@@ -423,9 +500,9 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
         }
     }
 
-    private static class NotificationCell extends ListCell<SilentPaymentNotification> {
+    private static class NotificationCell extends ListCell<SilentPaymentNotification.Verifiable> {
         @Override
-        protected void updateItem(SilentPaymentNotification notif, boolean empty) {
+        protected void updateItem(SilentPaymentNotification.Verifiable notif, boolean empty) {
             super.updateItem(notif, empty);
             if(empty || notif == null) {
                 setText(null);
@@ -439,7 +516,18 @@ public class SpNotificationReceiveDialog extends Dialog<SilentPaymentNotificatio
                 amountLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
                 Label outputLabel = new Label("Output #" + notif.vout());
                 outputLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
-                topRow.getChildren().addAll(amountLabel, outputLabel);
+
+                // Verification status
+                Label statusLabel = new Label();
+                statusLabel.setStyle("-fx-font-size: 11px;");
+                switch(notif.verificationStatus()) {
+                    case UNVERIFIED -> statusLabel.setText("");
+                    case VERIFIED -> { statusLabel.setText("✓ Verified"); statusLabel.setStyle("-fx-text-fill: #4CAF50; -fx-font-size: 11px; -fx-font-weight: bold;"); }
+                    case FAILED -> { statusLabel.setText("✗ Failed"); statusLabel.setStyle("-fx-text-fill: #f44336; -fx-font-size: 11px; -fx-font-weight: bold;"); }
+                    case VERIFYING -> { statusLabel.setText("⏳ Checking..."); statusLabel.setStyle("-fx-text-fill: #FF9800; -fx-font-size: 11px;"); }
+                }
+
+                topRow.getChildren().addAll(amountLabel, outputLabel, statusLabel);
                 Label txidLabel = new Label("TX: " + notif.txid().substring(0, 20) + "..." + notif.txid().substring(56));
                 txidLabel.setStyle("-fx-font-family: monospace; -fx-font-size: 11px; -fx-text-fill: #555;");
                 box.getChildren().addAll(topRow, txidLabel);
